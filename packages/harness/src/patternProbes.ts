@@ -5,6 +5,8 @@ import {
   exampleSchema,
   failureOf,
   openingScript,
+  outbox,
+  outboxDelivery,
   rowLock,
   savepoint,
   withTransactionRetry,
@@ -475,9 +477,75 @@ const retryProbe: Probe = {
     }),
 };
 
+const outboxState = async (session: Session): Promise<string> => {
+  const [row] = await session.query(
+    "SELECT status, attempts, claim_token::text AS token FROM outbox WHERE id = 1"
+  );
+
+  return `${row?.status} attempts ${row?.attempts} token ${row?.token === null ? "none" : "set"}`;
+};
+
+/**
+ * The delivery half of the outbox, through the pooler: a worker that claims and never acks (a crash) leaves the row to be
+ * claimed again once the lease has lapsed; the first worker's late ack then matches nothing; 20 concurrent claims by id
+ * give exactly one winner. The lease of the "crashed" claim is 0 ms, so it has lapsed by the next statement.
+ */
+const outboxLeaseProbe: Probe = {
+  id: "pattern-outbox-lease",
+  maxPreparedStatements: 1000,
+  poolSize: 2,
+  run: async (target) =>
+    await withExampleSchema(target, async () => {
+      const { ack, claimById } = outboxDelivery.statements;
+
+      const sequence = await withSessions(target.connect, 2, async ([a, b]) => {
+        if (a === undefined || b === undefined) {
+          return "no sessions";
+        }
+
+        await a.query(outbox.statements.insertMessage, ["t", "{}"]);
+
+        const first = await a.query(claimById, [1, 0]);
+        const second = await b.query(claimById, [1, 60_000]);
+        const lateAck = await a.query(ack, [1, first[0]?.claim_token ?? ""]);
+        const afterLateAck = await outboxState(a);
+        const ack2 = await b.query(ack, [1, second[0]?.claim_token ?? ""]);
+
+        return `A claimed (attempts ${first[0]?.attempts}); B claimed after the lapsed lease (attempts ${second[0]?.attempts}); A's late ack matched ${lateAck.length} row(s), state then: ${afterLateAck}; B's ack matched ${ack2.length}; final: ${await outboxState(a)}`;
+      });
+
+      const winners = await withSessions(target.connect, 1, async ([seed]) => {
+        await seed?.query(outbox.statements.insertMessage, ["t", "{}"]);
+
+        return await Promise.all(
+          Array.from(
+            { length: 20 },
+            async () =>
+              await withSessions(
+                target.connect,
+                1,
+                async ([session]) =>
+                  (await session?.query(claimById, [2, 60_000]))?.length ?? 0
+              )
+          )
+        );
+      });
+
+      const won = winners.reduce((sum, n) => sum + n, 0);
+      const detail = `${sequence}; 20 concurrent claims by id of one row: ${won} winner(s)`;
+
+      return sequence ===
+        "A claimed (attempts 1); B claimed after the lapsed lease (attempts 2); A's late ack matched 0 row(s), state then: pending attempts 2 token set; B's ack matched 1; final: delivered attempts 2 token none" &&
+        won === 1
+        ? works(detail)
+        : breaks(detail);
+    }),
+};
+
 export const patternProbes: readonly Probe[] = [
   rowLockProbe,
   skipLockedProbe,
+  outboxLeaseProbe,
   onConflictClaimProbe,
   savepointProbe,
   isolationProbe,

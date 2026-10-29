@@ -25,7 +25,7 @@ export const exampleSchema = [
   "CREATE TABLE claims (key text PRIMARY KEY, owner text NOT NULL)",
   "CREATE TABLE documents (id int PRIMARY KEY, body text NOT NULL, version int NOT NULL DEFAULT 1)",
   "CREATE TABLE orders (id bigserial PRIMARY KEY, item text NOT NULL)",
-  "CREATE TABLE outbox (id bigserial PRIMARY KEY, topic text NOT NULL, payload jsonb NOT NULL, published_at timestamptz)",
+  "CREATE TABLE outbox (id bigserial PRIMARY KEY, topic text NOT NULL, payload jsonb NOT NULL, status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'dead')), attempts int NOT NULL DEFAULT 0, claim_token uuid, claimed_until timestamptz, next_attempt_at timestamptz NOT NULL DEFAULT now(), delivered_at timestamptz, last_error text, CHECK ((claim_token IS NULL) = (claimed_until IS NULL)), CHECK (status <> 'dead' OR last_error IS NOT NULL), CHECK ((status = 'delivered') = (delivered_at IS NOT NULL)))",
 ] as const;
 
 export const dropExampleSchema =
@@ -79,20 +79,53 @@ export const conditionalUpdate: Pattern<"update"> = {
   title: "Write only if nobody else wrote first",
 };
 
-export const outbox: Pattern<"insertMessage" | "insertOrder" | "relay"> = {
+export const outbox: Pattern<"insertMessage" | "insertOrder"> = {
   id: "outbox",
   needsTransaction: true,
-  rows: ["skip-locked"],
+  rows: [],
   statements: {
     // Inside one transaction: the change and the message commit together or not at all.
     insertMessage:
       "INSERT INTO outbox (topic, payload) VALUES ($1, $2::jsonb) RETURNING id",
     insertOrder: "INSERT INTO orders (item) VALUES ($1) RETURNING id",
-    // The relay: concurrent relays take different messages.
-    relay:
-      "UPDATE outbox SET published_at = now() WHERE id IN (SELECT id FROM outbox WHERE published_at IS NULL ORDER BY id FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id, topic, payload",
   },
   title: "Write the change and the message in one transaction",
+};
+
+/**
+ * The delivery half of the outbox: at least once, with a lease, and a stale worker cannot harm a newer one. Every
+ * statement is one autocommit statement and none keeps a transaction open while the message is sent.
+ *
+ * The protocol: `claimBatch` or `claimById` marks a row pending-and-claimed (a new `claim_token`, `claimed_until` in the
+ * future, `attempts + 1`) and never marks it delivered; the worker sends; then `ack`, `release` or `bury` with the token.
+ * The token condition is the fence: once the lease has lapsed and another worker has claimed the row, the old token matches
+ * nothing and no row comes back, so "claim lost" is an empty result. A worker that crashes after the claim leaves the row
+ * pending; it is claimed again once `claimed_until` has passed. `attempts` rises at each claim, so it is also a fencing
+ * number for a downstream system. Delivery is unordered and a message can be sent twice: the id is its idempotency key.
+ *
+ * `claimById` uses no `SKIP LOCKED`, which is unverified on Hyperdrive (catalogue row `skip-locked`): the one conditional
+ * `UPDATE` is the claim, and a second claimer waits for the row lock, re-reads the row, finds a live lease and matches
+ * nothing. A row that comes back empty is held, delivered, dead or not yet due; the statement does not say which.
+ * `$2` of the claims is the lease in milliseconds, `$3` of `release` the delay before the next attempt; `bury` needs an
+ * error class (a null violates the table's CHECK), so a row ends only after a recorded failure.
+ */
+export const outboxDelivery: Pattern<
+  "ack" | "bury" | "claimBatch" | "claimById" | "release"
+> = {
+  id: "outbox-delivery",
+  needsTransaction: false,
+  rows: ["outbox-lease", "skip-locked"],
+  statements: {
+    ack: "UPDATE outbox SET status = 'delivered', delivered_at = now(), claim_token = NULL, claimed_until = NULL WHERE id = $1 AND claim_token = $2::uuid AND status = 'pending' RETURNING id",
+    bury: "UPDATE outbox SET status = 'dead', claim_token = NULL, claimed_until = NULL, last_error = $3 WHERE id = $1 AND claim_token = $2::uuid AND status = 'pending' RETURNING id",
+    claimBatch:
+      "WITH due AS (SELECT id FROM outbox WHERE status = 'pending' AND next_attempt_at <= now() AND (claimed_until IS NULL OR claimed_until <= now()) ORDER BY id FOR UPDATE SKIP LOCKED LIMIT $1) UPDATE outbox SET claim_token = gen_random_uuid(), claimed_until = now() + $2::int * interval '1 millisecond', attempts = outbox.attempts + 1 FROM due WHERE outbox.id = due.id RETURNING outbox.id, outbox.topic, outbox.payload, outbox.claim_token::text AS claim_token, outbox.attempts",
+    claimById:
+      "UPDATE outbox SET claim_token = gen_random_uuid(), claimed_until = now() + $2::int * interval '1 millisecond', attempts = attempts + 1 WHERE id = $1 AND status = 'pending' AND next_attempt_at <= now() AND (claimed_until IS NULL OR claimed_until <= now()) RETURNING id, topic, payload, claim_token::text AS claim_token, attempts",
+    release:
+      "UPDATE outbox SET claim_token = NULL, claimed_until = NULL, next_attempt_at = now() + $3::int * interval '1 millisecond', last_error = $4 WHERE id = $1 AND claim_token = $2::uuid AND status = 'pending' RETURNING id",
+  },
+  title: "Deliver an outbox message at least once",
 };
 
 export const transactionContext: Pattern<"read" | "set"> = {
@@ -126,6 +159,7 @@ export const patterns: readonly Pattern[] = [
   claim,
   conditionalUpdate,
   outbox,
+  outboxDelivery,
   transactionContext,
   savepoint,
 ];

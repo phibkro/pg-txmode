@@ -558,6 +558,29 @@ export const catalogue = [
   },
   {
     behaviour:
+      "A lease-based claim (token, lease, attempts, fenced ack) that survives a worker that dies, one autocommit statement each",
+    direct: docs(
+      "works",
+      "Each statement is atomic on its own; nothing lives in the session."
+    ),
+    hyperdrive: unverified(
+      "unknown",
+      "Not measured through Hyperdrive. The claim by id uses no SKIP LOCKED (that row is unverified there); a read of the outbox through Hyperdrive must not be cached."
+    ),
+    id: "outbox-lease",
+    probe: "pattern-outbox-lease",
+    seeds: [],
+    sources: [
+      `${pgDocs}/sql-update.html`,
+      `${pgDocs}/transaction-iso.html#XACT-READ-COMMITTED`,
+    ],
+    transactionPooled: probed(
+      "works",
+      "A claim whose worker never acked was claimed again after its lease (attempts 2); the first worker's late ack matched no row and changed nothing; 20 concurrent claims by id gave exactly one winner."
+    ),
+  },
+  {
+    behaviour:
       "INSERT ... ON CONFLICT ... RETURNING as a claim (through Hyperdrive, DO UPDATE upserts and a sequential DO NOTHING were observed; a concurrent DO NOTHING claim was not)",
     direct: docs("works", "Exactly one concurrent inserter gets the row back."),
     evidence: hyperdriveEvidence,
