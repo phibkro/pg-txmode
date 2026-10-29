@@ -205,6 +205,20 @@ const until = async <T>(
   return undefined;
 };
 
+/** One message, claimed by `a` for a minute: the schema, two sessions and the claim token. */
+const withClaimed = async (
+  use: (a: Session, b: Session, token: string) => Promise<void>
+): Promise<void> => {
+  await withSchema(async () => {
+    await addMessages(1);
+    await withTwo(stack().connect, async (a, b) => {
+      const claimed = await one(a, claimById, [1, 60_000]);
+
+      await use(a, b, String(claimed?.claim_token));
+    });
+  });
+};
+
 describe("outbox delivery (lease, token, fence)", () => {
   test("four relays that run at once claim disjoint sets that add up to every message", async () => {
     await withSchema(async () => {
@@ -323,55 +337,37 @@ describe("outbox delivery (lease, token, fence)", () => {
   });
 
   test("release records the error class and the next attempt waits for its date", async () => {
-    await withSchema(async () => {
-      await addMessages(1);
-      await withTwo(stack().connect, async (a, b) => {
-        const claimed = await one(a, claimById, [1, 60_000]);
+    await withClaimed(async (a, b, token) => {
+      expect(
+        (await a.query(release, [1, token, 3_600_000, "timeout"])).length
+      ).toBe(1);
+      expect(await b.query(claimById, [1, 60_000])).toStrictEqual([]);
+      expect((await stateOf(b, 1))?.last_error).toBe("timeout");
 
-        expect(
-          (
-            await a.query(release, [
-              1,
-              String(claimed?.claim_token),
-              3_600_000,
-              "timeout",
-            ])
-          ).length
-        ).toBe(1);
-        expect(await b.query(claimById, [1, 60_000])).toStrictEqual([]);
-        expect((await stateOf(b, 1))?.last_error).toBe("timeout");
+      // The retry date arrives: the test moves it, the server's clock is not waited for an hour.
+      await b.query("UPDATE outbox SET next_attempt_at = now() WHERE id = 1");
 
-        // The retry date arrives: the test moves it, the server's clock is not waited for an hour.
-        await b.query("UPDATE outbox SET next_attempt_at = now() WHERE id = 1");
+      const retried = await one(b, claimById, [1, 60_000]);
 
-        const retried = await one(b, claimById, [1, 60_000]);
-
-        expect(Number(retried?.attempts)).toBe(2);
-      });
+      expect(Number(retried?.attempts)).toBe(2);
     });
   });
 
   test("a row ends only with a recorded error class, and a dead row is never claimed again", async () => {
-    await withSchema(async () => {
-      await addMessages(1);
-      await withTwo(stack().connect, async (a, b) => {
-        const claimed = await one(a, claimById, [1, 60_000]);
-        const token = String(claimed?.claim_token);
+    await withClaimed(async (a, b, token) => {
+      const refused = await rejection(a.query(bury, [1, token, null]));
 
-        const refused = await rejection(a.query(bury, [1, token, null]));
-
-        expect(
-          refused === undefined ? undefined : failureOf(refused)?.sqlState
-        ).toBe("23514");
-        expect((await stateOf(a, 1))?.status).toBe("pending");
-        expect((await a.query(bury, [1, token, "rejected"])).length).toBe(1);
-        expect(await stateOf(a, 1)).toMatchObject({
-          last_error: "rejected",
-          status: "dead",
-        });
-        expect(await b.query(claimById, [1, 0])).toStrictEqual([]);
-        expect(await b.query(claimBatch, [5, 0])).toStrictEqual([]);
+      expect(
+        refused === undefined ? undefined : failureOf(refused)?.sqlState
+      ).toBe("23514");
+      expect((await stateOf(a, 1))?.status).toBe("pending");
+      expect((await a.query(bury, [1, token, "rejected"])).length).toBe(1);
+      expect(await stateOf(a, 1)).toMatchObject({
+        last_error: "rejected",
+        status: "dead",
       });
+      expect(await b.query(claimById, [1, 0])).toStrictEqual([]);
+      expect(await b.query(claimBatch, [5, 0])).toStrictEqual([]);
     });
   });
 
