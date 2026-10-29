@@ -1,0 +1,498 @@
+# Negative controls (raw).
+
+# C1: takers and twostores with the lease condition of the poll removed ('AND true' for 'AND (acquired_at IS NULL OR acquired_at < expiresAt)', line 1155 of a COPY of effect/dist/persistence/PersistedQueue.js in /tmp/pgtx0005b)
+[
+  {
+    "scenario": "takers",
+    "target": "direct",
+    "name": "takers",
+    "ok": true,
+    "ms": 3640,
+    "value": {
+      "rounds": 10,
+      "everyRoundTakenExactlyOnce": false,
+      "everyRoundCompleted": true,
+      "perRound": [
+        {
+          "taken": 41,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 372
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 359
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 359
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 357
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 357
+        },
+        {
+          "taken": 41,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 356
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 355
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 357
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "takers",
+    "target": "pgb1000",
+    "name": "takers",
+    "ok": true,
+    "ms": 3607,
+    "value": {
+      "rounds": 10,
+      "everyRoundTakenExactlyOnce": false,
+      "everyRoundCompleted": true,
+      "perRound": [
+        {
+          "taken": 41,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 362
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 359
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 359
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 357
+        },
+        {
+          "taken": 41,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 362
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "twostores",
+    "target": "direct",
+    "name": "twostores",
+    "ok": true,
+    "ms": 5605,
+    "value": {
+      "rounds": 10,
+      "everyRoundTakenExactlyOnce": false,
+      "everyRoundCompleted": true,
+      "perRound": [
+        {
+          "taken": 59,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 79,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 87,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 78,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 75,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 83,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 85,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 88,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 73,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 84,
+          "distinct": 40,
+          "completed": 40
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "twostores",
+    "target": "pgb1000",
+    "name": "twostores",
+    "ok": true,
+    "ms": 5741,
+    "value": {
+      "rounds": 10,
+      "everyRoundTakenExactlyOnce": false,
+      "everyRoundCompleted": true,
+      "perRound": [
+        {
+          "taken": 79,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 97,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 81,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 74,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 55,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 67,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 65,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 62,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 81,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 71,
+          "distinct": 40,
+          "completed": 40
+        }
+      ]
+    }
+  }
+]
+
+# C2: stale with the fence removed from complete() ('AND true' for 'AND acquired_by = lock', line 1094 of the same copy)
+[
+  {
+    "scenario": "stale",
+    "target": "direct",
+    "name": "stale",
+    "ok": true,
+    "ms": 15227,
+    "value": [
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "stale",
+    "target": "pgb1000",
+    "name": "stale",
+    "ok": true,
+    "ms": 15135,
+    "value": [
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      }
+    ]
+  }
+]
+
+# C3: crash with LOCK_SECONDS=3600 (the lease never lapses): nothing is taken before the 2 minute limit of the probe
+[
+  {
+    "scenario": "crash",
+    "target": "direct",
+    "name": "crash",
+    "ok": false,
+    "ms": 120015,
+    "error": "TimeoutError: Operation timed out after '2m'"
+  },
+  {
+    "scenario": "crash",
+    "target": "pgb1000",
+    "name": "crash",
+    "ok": false,
+    "ms": 120007,
+    "error": "TimeoutError: Operation timed out after '2m'"
+  }
+]
+

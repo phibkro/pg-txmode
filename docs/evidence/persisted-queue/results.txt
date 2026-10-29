@@ -1,0 +1,764 @@
+# raw output of: bun probe.ts offer takers twostores stale crash prepare stress m2b
+# date and tool versions:
+2026-10-29T20:47:50Z
+PgBouncer 1.25.2
+postgres (PostgreSQL) 18.6
+1.4.2
+# headroom.sh before the run:
+ok    memory: MemAvailable 16853 MiB of 64220 MiB, 21.4593% free after 3072 MiB (need >= 20%)
+ok    swap-in: 37 pages/s over 10s (need < 1000)
+ok    memory PSI: full avg60 1.35% (need < 10%; avg10 0.43% is reported, not gated)
+ok    load: 1-minute load average 17.38 on 32 threads (need < 32)
+ok    disk /home/nori/.local/state/pg-txmode-verify: 314958 MiB free (need >= 1024 MiB: twice the expected 512 MiB of writes)
+ok    disk /srv/share/projects/pg-txmode: 314958 MiB free (need >= 1024 MiB: twice the expected 512 MiB of writes)
+info  psi memory some: avg10=0.43 avg60=1.40
+info  psi cpu: avg10=1.35
+info  psi io: avg10=29.73
+# probe output:
+[
+  {
+    "scenario": "offer",
+    "target": "direct",
+    "name": "offer",
+    "ok": true,
+    "ms": 119,
+    "value": {
+      "afterRollback": 0,
+      "afterCommit": 1,
+      "outsideATransaction": 2,
+      "bizRowsAfterRollback": 0,
+      "queueRowsOfRolledBackOffer": 0,
+      "sameIdOfferedTwice": 1
+    }
+  },
+  {
+    "scenario": "offer",
+    "target": "pgb1000",
+    "name": "offer",
+    "ok": true,
+    "ms": 44,
+    "value": {
+      "afterRollback": 0,
+      "afterCommit": 1,
+      "outsideATransaction": 2,
+      "bizRowsAfterRollback": 0,
+      "queueRowsOfRolledBackOffer": 0,
+      "sameIdOfferedTwice": 1
+    }
+  },
+  {
+    "scenario": "takers",
+    "target": "direct",
+    "name": "takers",
+    "ok": true,
+    "ms": 3620,
+    "value": {
+      "rounds": 10,
+      "everyRoundTakenExactlyOnce": true,
+      "everyRoundCompleted": true,
+      "perRound": [
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 359
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 360
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 357
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 367
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 361
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 357
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "takers",
+    "target": "pgb1000",
+    "name": "takers",
+    "ok": true,
+    "ms": 3634,
+    "value": {
+      "rounds": 10,
+      "everyRoundTakenExactlyOnce": true,
+      "everyRoundCompleted": true,
+      "perRound": [
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 367
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 359
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 360
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 358
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 364
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 362
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 360
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 363
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40,
+          "ms": 360
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "twostores",
+    "target": "direct",
+    "name": "twostores",
+    "ok": true,
+    "ms": 5590,
+    "value": {
+      "rounds": 10,
+      "everyRoundTakenExactlyOnce": true,
+      "everyRoundCompleted": true,
+      "perRound": [
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "twostores",
+    "target": "pgb1000",
+    "name": "twostores",
+    "ok": true,
+    "ms": 5639,
+    "value": {
+      "rounds": 10,
+      "everyRoundTakenExactlyOnce": true,
+      "everyRoundCompleted": true,
+      "perRound": [
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        },
+        {
+          "taken": 40,
+          "distinct": 40,
+          "completed": 40
+        }
+      ]
+    }
+  },
+  {
+    "scenario": "stale",
+    "target": "direct",
+    "name": "stale",
+    "ok": true,
+    "ms": 15132,
+    "value": [
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "pending",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "pending",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "pending",
+          "attempts": 2,
+          "held": false
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "stale",
+    "target": "pgb1000",
+    "name": "stale",
+    "ok": true,
+    "ms": 15131,
+    "value": [
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "completes",
+        "log": [
+          "A-start",
+          "B-done(attempts 2)",
+          "A-done"
+        ],
+        "bExit": "Success",
+        "row": {
+          "id": "x",
+          "state": "completed",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "pending",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "pending",
+          "attempts": 2,
+          "held": false
+        }
+      },
+      {
+        "bOutcome": "fails",
+        "log": [
+          "A-start",
+          "A-done"
+        ],
+        "bExit": "Failure",
+        "row": {
+          "id": "x",
+          "state": "pending",
+          "attempts": 2,
+          "held": false
+        }
+      }
+    ]
+  },
+  {
+    "scenario": "crash",
+    "target": "direct",
+    "name": "crash",
+    "ok": true,
+    "ms": 2205,
+    "value": {
+      "childSaid": "CLAIMED attempts=1",
+      "rowAfterKill": {
+        "id": "c",
+        "state": "pending",
+        "attempts": 1,
+        "held": true
+      },
+      "takenAfter": {
+        "attempts": 2,
+        "afterMs": 2010
+      },
+      "rowAfterTake": {
+        "id": "c",
+        "state": "completed",
+        "attempts": 2,
+        "held": false
+      }
+    }
+  },
+  {
+    "scenario": "crash",
+    "target": "pgb1000",
+    "name": "crash",
+    "ok": true,
+    "ms": 2184,
+    "value": {
+      "childSaid": "CLAIMED attempts=1",
+      "rowAfterKill": {
+        "id": "c",
+        "state": "pending",
+        "attempts": 1,
+        "held": true
+      },
+      "takenAfter": {
+        "attempts": 2,
+        "afterMs": 2020
+      },
+      "rowAfterTake": {
+        "id": "c",
+        "state": "completed",
+        "attempts": 2,
+        "held": false
+      }
+    }
+  },
+  {
+    "scenario": "prepare",
+    "target": "direct",
+    "name": "prepare",
+    "ok": true,
+    "ms": 71,
+    "value": {
+      "offered": 20,
+      "taken": 20,
+      "completedRows": 20
+    }
+  },
+  {
+    "scenario": "prepare",
+    "target": "pgb1000",
+    "name": "prepare",
+    "ok": true,
+    "ms": 85,
+    "value": {
+      "offered": 20,
+      "taken": 20,
+      "completedRows": 20
+    }
+  },
+  {
+    "scenario": "prepare",
+    "target": "pgb0",
+    "name": "prepare",
+    "ok": true,
+    "ms": 80,
+    "value": {
+      "offered": 20,
+      "taken": 20,
+      "completedRows": 20
+    }
+  },
+  {
+    "scenario": "prepare",
+    "target": "pgb0noprep",
+    "name": "prepare",
+    "ok": true,
+    "ms": 67,
+    "value": {
+      "offered": 20,
+      "taken": 20,
+      "completedRows": 20
+    }
+  },
+  {
+    "scenario": "prepare",
+    "target": "pgb0pool1",
+    "name": "prepare",
+    "ok": true,
+    "ms": 67,
+    "value": {
+      "offered": 20,
+      "taken": 20,
+      "completedRows": 20
+    }
+  },
+  {
+    "scenario": "stress",
+    "target": "direct",
+    "name": "stress",
+    "ok": true,
+    "ms": 438,
+    "value": {
+      "offered": 200,
+      "taken": 200,
+      "distinct": 200,
+      "completedRows": 200
+    }
+  },
+  {
+    "scenario": "stress",
+    "target": "pgb1000",
+    "name": "stress",
+    "ok": true,
+    "ms": 436,
+    "value": {
+      "offered": 200,
+      "taken": 200,
+      "distinct": 200,
+      "completedRows": 200
+    }
+  },
+  {
+    "scenario": "stress",
+    "target": "pgb0",
+    "name": "stress",
+    "ok": true,
+    "ms": 442,
+    "value": {
+      "offered": 200,
+      "taken": 200,
+      "distinct": 200,
+      "completedRows": 200
+    }
+  },
+  {
+    "scenario": "stress",
+    "target": "pgb0noprep",
+    "name": "stress",
+    "ok": true,
+    "ms": 440,
+    "value": {
+      "offered": 200,
+      "taken": 200,
+      "distinct": 200,
+      "completedRows": 200
+    }
+  },
+  {
+    "scenario": "stress",
+    "target": "pgb0pool1",
+    "name": "stress",
+    "ok": true,
+    "ms": 460,
+    "value": {
+      "offered": 200,
+      "taken": 200,
+      "distinct": 200,
+      "completedRows": 200
+    }
+  },
+  {
+    "scenario": "m2b",
+    "target": "direct",
+    "name": "m2b",
+    "ok": true,
+    "ms": 84,
+    "value": {
+      "statements": 1200,
+      "wrongAnswers": 0,
+      "errors": 0,
+      "errorCodes": {},
+      "distinctServerBackends": 8
+    }
+  },
+  {
+    "scenario": "m2b",
+    "target": "pgb1000",
+    "name": "m2b",
+    "ok": true,
+    "ms": 91,
+    "value": {
+      "statements": 1200,
+      "wrongAnswers": 0,
+      "errors": 0,
+      "errorCodes": {},
+      "distinctServerBackends": 3
+    }
+  },
+  {
+    "scenario": "m2b",
+    "target": "pgb0",
+    "name": "m2b",
+    "ok": true,
+    "ms": 145,
+    "value": {
+      "statements": 1200,
+      "wrongAnswers": 0,
+      "errors": 0,
+      "errorCodes": {},
+      "distinctServerBackends": 3
+    }
+  },
+  {
+    "scenario": "m2b",
+    "target": "pgb0noprep",
+    "name": "m2b",
+    "ok": true,
+    "ms": 66,
+    "value": {
+      "statements": 1200,
+      "wrongAnswers": 0,
+      "errors": 0,
+      "errorCodes": {},
+      "distinctServerBackends": 3
+    }
+  },
+  {
+    "scenario": "m2b",
+    "target": "pgb0pool1",
+    "name": "m2b",
+    "ok": true,
+    "ms": 86,
+    "value": {
+      "statements": 1200,
+      "wrongAnswers": 0,
+      "errors": 0,
+      "errorCodes": {},
+      "distinctServerBackends": 1
+    }
+  }
+]
