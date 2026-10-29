@@ -28,6 +28,23 @@ The development lifecycle (spec 0000) is copied from [`reebeat/studio`](https://
 | `tools/quality/test/recordRound.test.ts`, `headroom.test.ts`, `scriptHarness.ts` | same paths | **ported to plain Vitest** (node:child_process): the same samples, controls and assertions |
 | `tools/quality/test/effectBoundary.test.ts` | none | original |
 
+## Added by spec 0001
+
+| File | Source | Deviation |
+| --- | --- | --- |
+| `docs/evidence/hyperdrive/vektorprogrammet-reimagined-0000-results.md` | [`phibkro/vektorprogrammet-reimagined`](https://github.com/phibkro/vektorprogrammet-reimagined) `docs/specs/0000-results.md` @ `1104c3019a76c619c4c8e9ee04c71ce191467ed4` (public, the operator's) | an excerpt: the final run's check lines and the comparison table of check 3b, copied without change; identifiers left out |
+| `packages/harness/src/profile.ts` | Neon's published PgBouncer configuration, <https://neon.com/docs/connect/connection-pooling> (read 2026-10-29) | the five settings that the page lists; `max_client_conn` is lowered to fit the open-file limit when that is lower (PgBouncer refuses to start otherwise) |
+| `tools/quality/*`, `packages/*` (everything else of spec 0001) | none | original; the research report `REPORT.md` of 2026-10-29 (HyperdriveResearch-2) is the source of the facts, cited per catalogue row |
+
+## Third-party packages used by spec 0001 (installed, not copied)
+
+| Package | Licence | Used for |
+| --- | --- | --- |
+| `libpg-query` 18.2.1 (`constructive-io/libpg-query-node`; the PostgreSQL 18 parser from `pganalyze/libpg_query`, compiled to WebAssembly) | MIT (the npm package); BSD-3-Clause (the C library it builds on, per the research report) | the AST of the lint |
+| `oxc-parser` 0.153.0 | MIT | `sql` tagged templates of the lint; the exception registry check |
+| `pg` (node-postgres) 8.23.1 | MIT | the harness's driver (a development tool; the core does not import it) |
+| `zod` 4.6.7 | MIT | the shape of the registry and of the statement log |
+
 Not copied from studio: `apps/editor`, `tools/oxlint/anti-slop/**`, `tools/quality/effectFamily.ts`, `diagnosticRules.ts`, `featureMap.ts`, `foldkitLint.ts` and their tests, `docs/design`, `STATE.md` (rewritten), the `verify-studio` launch, doctor, cleanup and page scripts.
 
 ## Third-party licence texts

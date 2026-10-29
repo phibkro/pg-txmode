@@ -1,0 +1,27 @@
+{
+  "name": "@pg-txmode/harness",
+  "version": "0.0.0",
+  "private": true,
+  "bin": {
+    "pg-txmode-harness": "./src/cli.ts"
+  },
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bunx vp test",
+    "build": "vp pack"
+  },
+  "dependencies": {
+    "@pg-txmode/core": "workspace:*",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@pg-txmode/lint": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

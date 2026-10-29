@@ -1,8 +1,6 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "target": "es2023",
-    "lib": ["es2023"],
     "types": ["node"],
     "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
@@ -11,5 +9,5 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
-  "include": ["*.ts", "test"]
+  "include": ["*.ts", "src", "test"]
 }

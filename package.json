@@ -9,11 +9,15 @@
   "type": "module",
   "scripts": {
     "prepare": "vp config --no-agent",
-    "ready": "bun run check && bun run check:exceptions && bun run test && bun run build && bun run knip && bun run cpd && bun run secrets",
+    "ready": "bun run check && bun run check:exceptions && bun run check:docs && bun run test && bun run build && bun run knip && bun run cpd && bun run secrets",
     "check": "vp check",
     "test": "vp run -r --no-cache test",
     "build": "vp run -r --no-cache build",
     "check:exceptions": "bun tools/quality/checkExceptions.ts",
+    "check:docs": "bun packages/core/scripts/readme.ts --check",
+    "docs:gen": "bun packages/core/scripts/readme.ts",
+    "probes": "bun packages/harness/src/cli.ts probes",
+    "stack": "bun packages/harness/src/cli.ts up",
     "knip": "knip",
     "cpd": "jscpd --config .jscpd.json .",
     "secrets": "gitleaks git --config .gitleaks.toml --redact",
@@ -49,6 +53,9 @@
     "typescript": "7.0.2",
     "@types/node": "^26.6.5",
     "oxc-parser": "0.153.0",
+    "pg": "8.23.1",
+    "@types/pg": "8.23.1",
+    "libpg-query": "18.2.1",
     "zod": "4.6.7"
   }
 }
