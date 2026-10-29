@@ -1,0 +1,24 @@
+{
+  "name": "@pg-txmode/pg",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "bunx vp test",
+    "build": "vp pack"
+  },
+  "dependencies": {
+    "@pg-txmode/core": "workspace:*",
+    "pg": "catalog:"
+  },
+  "devDependencies": {
+    "@pg-txmode/harness": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

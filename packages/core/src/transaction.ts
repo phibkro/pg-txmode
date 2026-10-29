@@ -151,13 +151,13 @@ export const retryDecision = (
 };
 
 export interface RetryEnvironment {
-  readonly policy?: RetryPolicy;
+  readonly policy?: RetryPolicy | undefined;
   /** Waits; defaults to a timer. Inject a fake to test without time. */
-  readonly sleep?: (milliseconds: number) => Promise<void>;
+  readonly sleep?: ((milliseconds: number) => Promise<void>) | undefined;
   /** A draw in `[0, 1)`; defaults to `Math.random`. */
-  readonly random?: () => number;
+  readonly random?: (() => number) | undefined;
   /** Called before each retry; the failure and the attempt that ended in it. */
-  readonly onRetry?: (failure: Failure, attempt: number) => void;
+  readonly onRetry?: ((failure: Failure, attempt: number) => void) | undefined;
 }
 
 const delay = async (milliseconds: number): Promise<null> => {

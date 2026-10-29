@@ -2,10 +2,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { classifyFailure, failureOf } from "@pg-txmode/core";
 import type { FailureKind } from "@pg-txmode/core";
+import { sendCancelRequest } from "@pg-txmode/core/cancel";
 
 import { breaks, withSessions, works } from "./probe.ts";
-import type { Probe, Target } from "./probe.ts";
-import { pgConnect, rejection, sendCancel } from "./session.ts";
+import type { Observation, Probe, Target } from "./probe.ts";
+import { pgConnect, rejection } from "./session.ts";
 import type { Session } from "./session.ts";
 
 const longStatement = "SELECT pg_sleep(30)";
@@ -40,7 +41,7 @@ const cancelledStatement = async (
   const running = rejection(session.query(longStatement));
 
   await untilActive(target, longStatement);
-  await sendCancel(target.endpoint, session.cancelKey);
+  await sendCancelRequest(target.endpoint, session.cancelKey);
 
   return await running;
 };
@@ -119,50 +120,102 @@ const statementTimeoutVsCancel: Probe = {
 };
 
 /**
+ * A table in PostgreSQL itself (not behind the pooler) and an observer connected to PostgreSQL, for the probes that ask
+ * whether a victim client's lock outlives it. The table is dropped afterwards, waiting for any lock the victim still holds.
+ */
+const withObserverTable = async (
+  target: Target,
+  table: string,
+  use: (observer: Session) => Promise<Observation>
+): Promise<Observation> =>
+  await withSessions(pgConnect(target.direct.url), 1, async ([observer]) => {
+    if (observer === undefined) {
+      return breaks("no observer");
+    }
+
+    await observer.query(`CREATE TABLE ${table} (k int PRIMARY KEY)`);
+
+    try {
+      return await use(observer);
+    } finally {
+      await observer.query("SET lock_timeout = 0");
+      await observer.query(`DROP TABLE ${table}`);
+    }
+  });
+
+/**
  * H6 and L3 on a local pooler: a client whose socket closes in the middle of a transaction leaves nothing committed and
- * no lock behind. The table lives in PostgreSQL; the observer connects to PostgreSQL itself.
+ * no lock behind, while its backend is idle in the transaction.
  */
 const abortRollsBack: Probe = {
   id: "abort-rolls-back",
   maxPreparedStatements: 1000,
   poolSize: 2,
   run: async (target) =>
-    await withSessions(pgConnect(target.direct.url), 1, async ([observer]) => {
-      if (observer === undefined) {
-        return breaks("no observer");
-      }
+    await withObserverTable(target, "abort_probe", async (observer) => {
+      const victim = await target.connect();
 
-      await observer.query("CREATE TABLE abort_probe (k int PRIMARY KEY)");
+      await victim.query("BEGIN");
+      await victim.query("INSERT INTO abort_probe VALUES (1)");
+      victim.destroy();
+      await sleep(500);
 
-      try {
-        const victim = await target.connect();
+      // The lock on key 1 is free once the transaction is rolled back; a held lock makes this insert wait and fail.
+      await observer.query("SET lock_timeout = 2000");
 
-        await victim.query("BEGIN");
-        await victim.query("INSERT INTO abort_probe VALUES (1)");
-        victim.destroy();
-        await sleep(500);
+      const refused = await rejection(
+        observer.query("INSERT INTO abort_probe VALUES (1)")
+      );
 
-        // The lock on key 1 is free once the transaction is rolled back; a held lock makes this insert wait and fail.
-        await observer.query("SET lock_timeout = 2000");
+      const rows = await observer.query(
+        "SELECT count(*)::int AS n FROM abort_probe"
+      );
 
-        const refused = await rejection(
-          observer.query("INSERT INTO abort_probe VALUES (1)")
-        );
+      return refused === undefined && Number(rows[0]?.n) === 1
+        ? works(
+            "the victim's insert was rolled back and its lock released: the observer inserted the same key"
+          )
+        : breaks(
+            `the observer could not insert the victim's key: ${refused?.message}`
+          );
+    }),
+};
 
-        const rows = await observer.query(
-          "SELECT count(*)::int AS n FROM abort_probe"
-        );
+const busyStatement = "SELECT pg_sleep(3)";
 
-        return refused === undefined && Number(rows[0]?.n) === 1
-          ? works(
-              "the victim's insert was rolled back and its lock released: the observer inserted the same key"
-            )
-          : breaks(
-              `the observer could not insert the victim's key: ${refused?.message}`
-            );
-      } finally {
-        await observer.query("DROP TABLE abort_probe");
-      }
+/**
+ * The same client, closed while its backend is running a statement: the server does not look at the socket until the
+ * statement ends (`client_connection_check_interval` is 0 by default), so the victim's lock is still held. Observed
+ * directly and through the pooler; the pooler cannot release what PostgreSQL still holds.
+ */
+const abortBusyHoldsLocks: Probe = {
+  id: "abort-busy-holds-locks",
+  maxPreparedStatements: 1000,
+  poolSize: 2,
+  run: async (target) =>
+    await withObserverTable(target, "abort_busy_probe", async (observer) => {
+      const victim = await target.connect();
+
+      await victim.query("BEGIN");
+      await victim.query("INSERT INTO abort_busy_probe VALUES (1)");
+
+      const running = rejection(victim.query(busyStatement));
+
+      await untilActive(target, busyStatement);
+      victim.destroy();
+      await observer.query("SET lock_timeout = 500");
+
+      const refused = await rejection(
+        observer.query("INSERT INTO abort_busy_probe VALUES (1)")
+      );
+
+      await running;
+
+      return refused === undefined
+        ? works("the observer inserted the victim's key at once")
+        : breaks(
+            `the observer waited and failed while the victim's statement still ran: ${refused.message}`
+          );
     }),
 };
 
@@ -170,4 +223,5 @@ export const protocolProbes: readonly Probe[] = [
   cancelForwarded,
   statementTimeoutVsCancel,
   abortRollsBack,
+  abortBusyHoldsLocks,
 ];

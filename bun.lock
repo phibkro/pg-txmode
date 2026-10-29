@@ -61,6 +61,21 @@
         "vite-plus": "catalog:",
       },
     },
+    "packages/pg": {
+      "name": "@pg-txmode/pg",
+      "version": "0.0.0",
+      "dependencies": {
+        "@pg-txmode/core": "workspace:*",
+        "pg": "catalog:",
+      },
+      "devDependencies": {
+        "@pg-txmode/harness": "workspace:*",
+        "@types/node": "catalog:",
+        "@types/pg": "catalog:",
+        "typescript": "catalog:",
+        "vite-plus": "catalog:",
+      },
+    },
     "tools/quality": {
       "name": "@pg-txmode/quality",
       "version": "0.0.0",
@@ -341,6 +356,8 @@
     "@pg-txmode/harness": ["@pg-txmode/harness@workspace:packages/harness"],
 
     "@pg-txmode/lint": ["@pg-txmode/lint@workspace:packages/lint"],
+
+    "@pg-txmode/pg": ["@pg-txmode/pg@workspace:packages/pg"],
 
     "@pg-txmode/quality": ["@pg-txmode/quality@workspace:tools/quality"],
 

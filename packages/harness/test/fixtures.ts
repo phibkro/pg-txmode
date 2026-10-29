@@ -1,10 +1,9 @@
 import { afterAll, beforeAll } from "vite-plus/test";
 
-import { pgConnect, startPgBouncer, startPostgres } from "../src/index.ts";
-import type { Connect, Pooler, Postgres, Session } from "../src/index.ts";
+import { startPostgres, startStack } from "../src/index.ts";
+import type { Connect, Postgres, Session, Stack } from "../src/index.ts";
 import type { Target } from "../src/probe.ts";
 import { withSessions } from "../src/probe.ts";
-import { neonProfile } from "../src/profile.ts";
 
 /** A throwaway PostgreSQL for the tests of one file, started before them and stopped after them. */
 export const usePostgres = (): (() => Postgres) => {
@@ -26,30 +25,15 @@ export const usePostgres = (): (() => Postgres) => {
   };
 };
 
-export interface Stack {
-  readonly postgres: Postgres;
-  readonly pooler: Pooler;
-  /** A connection to the pooler. */
-  readonly connect: Connect;
-}
-
 /** PostgreSQL and a PgBouncer in front of it (Neon's settings, `poolSize` server connections), for the tests of one file. */
 export const useStack = (poolSize: number): (() => Stack) => {
   let stack: Stack | undefined;
 
   beforeAll(async () => {
-    const postgres = await startPostgres();
-
-    const pooler = await startPgBouncer(postgres, {
-      ...neonProfile(postgres.maxConnections),
-      defaultPoolSize: poolSize,
-    });
-
-    stack = { connect: pgConnect(pooler.endpoint.url), pooler, postgres };
+    stack = await startStack(poolSize);
   }, 60_000);
   afterAll(async () => {
-    await stack?.pooler.stop();
-    await stack?.postgres.stop();
+    await stack?.stop();
   });
 
   return () => {
