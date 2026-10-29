@@ -58,10 +58,13 @@ const args = (node: JsonObject): readonly JsonNode[] => {
   return isList(list) ? list : [];
 };
 
-/** `set_config(name, value, is_local)`: the third argument decides. A boolean constant `false` is an empty `boolval`. */
-const setConfigHits = (visit: Visit): readonly Hit[] => {
+/**
+ * What a `set_config(name, value, is_local)` call says about `is_local`: `true`, `false`, or `undefined` when it is not a
+ * boolean constant (a parameter). `null` when the call is not `set_config`. A boolean constant `false` is an empty `boolval`.
+ */
+const setConfigIsLocal = (visit: Visit): boolean | null | undefined => {
   if (functionName(visit) !== "set_config") {
-    return [];
+    return null;
   }
 
   const third = args(visit.node).at(2);
@@ -69,23 +72,38 @@ const setConfigHits = (visit: Visit): readonly Hit[] => {
   const boolval = isObject(constant) ? constant.boolval : undefined;
 
   if (isObject(constant) && boolval !== undefined) {
-    const local = isObject(boolval) ? boolval.boolval : undefined;
-
-    return local === true
-      ? []
-      : [{ detail: "set_config(..., false)", exact: true, node: visit.node }];
+    return isObject(boolval) && boolval.boolval === true;
   }
 
-  return [
-    {
-      detail:
-        "set_config(..., is_local) with an is_local that is not a constant",
-      exact: true,
-      node: visit.node,
-      undecided: true,
-    },
-  ];
+  return undefined;
 };
+
+/** `set_config(..., false)` and `set_config(..., $1)`: the session setting, or one the SQL cannot decide. */
+const setConfigHits = (visit: Visit): readonly Hit[] => {
+  const local = setConfigIsLocal(visit);
+
+  if (local === null || local === true) {
+    return [];
+  }
+
+  return local === false
+    ? [{ detail: "set_config(..., false)", exact: true, node: visit.node }]
+    : [
+        {
+          detail:
+            "set_config(..., is_local) with an is_local that is not a constant",
+          exact: true,
+          node: visit.node,
+          undecided: true,
+        },
+      ];
+};
+
+/** `set_config(name, value, true)`: safe behind a pooler that resets the connection, but a function call, not a `SET`. */
+const setConfigLocalHits = (visit: Visit): readonly Hit[] =>
+  setConfigIsLocal(visit) === true
+    ? [{ detail: "set_config(..., true)", exact: true, node: visit.node }]
+    : [];
 
 /** SET and RESET without LOCAL; `SET TRANSACTION` applies to the current transaction and is not a session setting. */
 const sessionSetHits = (visit: Visit): readonly Hit[] => {
@@ -225,6 +243,12 @@ export const featureRules: readonly FeatureRule[] = [
     hits: setConfigHits,
     id: "session-config",
     title: "set_config with is_local = false",
+  },
+  {
+    feature: "transactionLocalConfig",
+    hits: setConfigLocalHits,
+    id: "set-config-local",
+    title: "set_config with is_local = true",
   },
   {
     feature: "sqlPrepare",

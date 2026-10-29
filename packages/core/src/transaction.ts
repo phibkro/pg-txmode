@@ -4,8 +4,9 @@ import type { Failure } from "./sqlstate.ts";
 /**
  * How to open a transaction safely behind a transaction pooler, and how to run it again.
  *
- * Every setting is transaction-local (`SET LOCAL`), which https://developers.cloudflare.com/hyperdrive/concepts/connection-pooling/
- * documents as supported and which the harness probe `scoped-set-local` observed behind PgBouncer. The opening is one
+ * Every setting is transaction-local (`SET LOCAL`). Cloudflare documents `SET` statements for the duration of a transaction
+ * (https://developers.cloudflare.com/hyperdrive/concepts/connection-pooling/) without naming `SET LOCAL`, and the harness probe
+ * `scoped-set-local` observed it behind PgBouncer. The opening is one
  * simple-query script, so `BEGIN` and the settings cost one round trip (the cost problem of
  * https://github.com/Effect-TS/effect/issues/10113); whether a pooler accepts a multi-statement script is observed by the
  * harness (`pattern-isolation`), and a pooler that does not can run `openingStatements` one by one.

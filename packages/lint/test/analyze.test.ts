@@ -143,6 +143,15 @@ describe("severity follows what is known about the mode", () => {
     });
   });
 
+  test("set_config(..., true) is fine behind PgBouncer and unverified behind Hyperdrive", async () => {
+    const sql = "BEGIN; SELECT set_config('app.actor', $1, true); COMMIT";
+
+    expect(await severities(sql, pgBouncer(1000))).toStrictEqual({});
+    expect(await severities(sql, hyperdrive)).toStrictEqual({
+      "set-config-local": "warning",
+    });
+  });
+
   test("COPY and cursors are unverified everywhere that was not measured", async () => {
     expect(
       await severities("COPY t FROM STDIN", pgBouncer(1000))

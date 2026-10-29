@@ -25,6 +25,8 @@ const untilActive = async (target: Target, text: string): Promise<void> => {
 
       await sleep(10);
     }
+
+    throw new Error(`the statement ${text} was not running after 5 s`);
   });
 };
 

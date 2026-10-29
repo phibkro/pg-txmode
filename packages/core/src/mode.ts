@@ -98,6 +98,7 @@ export const featureRows = {
   sessionSet: "set-session",
   sqlPrepare: "sql-prepare",
   transactionAdvisoryLock: "advisory-xact",
+  transactionLocalConfig: "set-config-local",
   transactionLocalSettings: "set-local",
   withHoldCursor: "with-hold-cursor",
 } as const satisfies Record<string, RowId>;
@@ -164,7 +165,9 @@ const preparedStatementsOf = (mode: ConnectionMode): PreparedStatements => {
   }
 
   if (mode.pooler === "supavisor") {
-    return "unnamed-only";
+    return cellOf(mode, "named-statements-untracked").outcome === "works"
+      ? "named-protocol"
+      : "unnamed-only";
   }
 
   if (mode.pooler === "pgbouncer" && mode.maxPreparedStatements === 0) {
@@ -200,6 +203,7 @@ export const capabilities = (mode: ConnectionMode): Capabilities => {
     sessionSet: support("sessionSet"),
     sqlPrepare: support("sqlPrepare"),
     transactionAdvisoryLock: support("transactionAdvisoryLock"),
+    transactionLocalConfig: support("transactionLocalConfig"),
     transactionLocalSettings: support("transactionLocalSettings"),
     withHoldCursor: support("withHoldCursor"),
   };

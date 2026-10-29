@@ -538,7 +538,8 @@ export const catalogue = [
     ),
   },
   {
-    behaviour: "INSERT ... ON CONFLICT ... RETURNING as a claim",
+    behaviour:
+      "INSERT ... ON CONFLICT ... RETURNING as a claim (through Hyperdrive, DO UPDATE upserts and a sequential DO NOTHING were observed; a concurrent DO NOTHING claim was not)",
     direct: docs("works", "Exactly one concurrent inserter gets the row back."),
     evidence: hyperdriveEvidence,
     hyperdrive: throughHyperdrive(
@@ -556,7 +557,7 @@ export const catalogue = [
   },
   {
     behaviour:
-      "SQLSTATE reaches the client (23505, 40001, 40P01), so a failure can be classified and retried",
+      "SQLSTATE reaches the client, so a failure can be classified and retried (through Hyperdrive only 23505 was observed; 40001 and 40P01 were not)",
     direct: docs("works", "Every error carries its SQLSTATE."),
     evidence: hyperdriveEvidence,
     hyperdrive: throughHyperdrive(
@@ -777,14 +778,16 @@ export const probeIds = catalogue.flatMap((row) =>
 );
 
 /**
- * Supavisor's shared pooler differs from PgBouncer in these rows only. Supabase: "Transaction mode does not support prepared
- * statements" and "query pipelining" (https://supabase.com/docs/guides/database/connecting-to-postgres; the per-driver switch
- * is `prepare: false`). The transaction-pooled column of every other row is PgBouncer's. Not measured here: no Supavisor ran.
+ * Supavisor's shared pooler differs from PgBouncer in these rows only. Supabase's connection guide says the shared pooler
+ * "doesn't support prepared statements" in transaction mode (the dedicated pooler, PgBouncer 1.21 and later, does) and that
+ * transaction mode "does not support query pipelining" (https://supabase.com/docs/guides/database/connecting-to-postgres;
+ * the per-driver switch is `prepare: false`). The transaction-pooled column of every other row is PgBouncer's. Not measured
+ * here: no Supavisor ran. `preparedStatementsOf` and `capabilities` read these cells.
  */
 export const supavisorCells: Partial<Record<RowId, Cell>> = {
   "named-statements-untracked": docs(
     "breaks",
-    "Supabase documents transaction mode as not supporting prepared statements; use unnamed statements (prepare: false)."
+    "Supabase's shared pooler (Supavisor) does not support prepared statements in transaction mode; use unnamed statements (prepare: false). Its dedicated pooler is PgBouncer 1.21 or later and does."
   ),
   pipelining: docs(
     "breaks",
