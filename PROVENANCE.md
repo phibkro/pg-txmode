@@ -14,7 +14,7 @@ The development lifecycle (spec 0000) is copied from [`reebeat/studio`](https://
 | `.agents/skills/verify-pg-txmode/scripts/headroom.sh` | `.agents/skills/verify-studio/scripts/headroom.sh` | adapted: the header and the demand figures (3 GiB memory, 512 MiB disk); the four limits and the fail-closed rule are studio's |
 | `.agents/skills/verify-pg-txmode/scripts/lib.sh` | `.agents/skills/verify-studio/scripts/lib.sh` | reduced to `TREE`, `EVIDENCE_ROOT`, `die` and `in_devenv`; evidence root `~/.local/state/pg-txmode-verify` |
 | `.agents/skills/verify-pg-txmode/SKILL.md` | `.agents/skills/verify-studio/SKILL.md` (shape only) | new text: headroom, gates, path table, cleanup |
-| `.github/workflows/checks.yml` | same path | identical steps and pins; the header is new |
+| `.github/workflows/checks.yml` | same path | identical commands and pins; two step names changed (no Effect, no editor here); the header is new |
 | `package.json` | same path | name, workspaces (`packages/*`, `tools/*`), scripts (`check:exceptions` runs `checkExceptions.ts`; `prepare` without the Effect patch), `catalog` cut to what this repository uses (no Effect, Foldkit, Tailwind) |
 | `vite.config.ts` | same path | no Effect, Foldkit or vendored anti-slop Effect rules; restricted-import patterns renamed `@pg-txmode/` |
 | `tsconfig.json` | same path | no Effect language-service plugin; `include` lists the root files and `tools/` |
