@@ -1,0 +1,52 @@
+# Provenance: adapted from reebeat/studio @ d4fd75eaca83b9e8a98f073d5b1d957da5d6b8b8 (.github/workflows/checks.yml), which
+# adapted it from reebeat/reebeat @ f7c348877585f54b6bf00651608726dd7e5044d3 and phibkro/vektorprogrammet-reimagined
+# @ 797e9e41d96194b9479ff224ac1c40bbc0545888. Deviation: none in the steps; only this header.
+# Each step calls the root script of the same name (`bun run ready` is their sequence), never its command.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012 # v31
+      - uses: cachix/cachix-action@97e5ff84d02b3b4f9936339f767e17f03c9252ed # v16
+        with:
+          name: devenv
+      - name: Install pinned devenv CLI
+        shell: bash
+        run: nix profile add github:cachix/devenv/b904dcb51fe48c30db250038241507f60752f222
+      - name: Install workspace dependencies and prepare editor/hooks
+        shell: bash
+        run: devenv shell -- bun install --frozen-lockfile
+      - name: Vite+ checks
+        shell: bash
+        run: devenv shell -- bun run check
+      - name: Effect exception registry
+        shell: bash
+        run: devenv shell -- bun run check:exceptions
+      - name: Workspace tests
+        shell: bash
+        run: devenv shell -- bun run test
+      - name: Build
+        shell: bash
+        run: devenv shell -- bun run build
+      - name: Knip
+        shell: bash
+        run: devenv shell -- bun run knip
+      - name: Copy-paste detection
+        shell: bash
+        run: devenv shell -- bun run cpd
+      - name: Full-history secret scan
+        shell: bash
+        run: devenv shell -- bun run secrets

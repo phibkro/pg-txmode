@@ -1,0 +1,11 @@
+#!/bin/sh
+# Provenance: copied from phibkro/vektorprogrammet-reimagined @ 797e9e41d96194b9479ff224ac1c40bbc0545888 (.vite-hooks/pre-commit), unchanged.
+# Hooks run inside devenv so Bun, gitleaks, and the pinned Node runtime are available.
+# Re-enter the project's shell for GUI/editor commits that did not inherit direnv.
+set -eu
+if [ -z "${DEVENV_ROOT:-}" ]; then
+  exec devenv shell -- sh "$0" "$@"
+fi
+# Scan the staged blobs before lint-fix can touch them.
+gitleaks git --staged --redact --no-banner --config .gitleaks.toml
+bunx vp staged

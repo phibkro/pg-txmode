@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "tools/quality": {
+      "entry": ["checkExceptions.ts"],
+      "project": ["*.ts", "test/**/*.ts"]
+    }
+  },
+  "ignoreBinaries": ["gitleaks"],
+  "ignoreDependencies": ["vite"]
+}

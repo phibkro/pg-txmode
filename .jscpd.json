@@ -1,0 +1,8 @@
+{
+  "minTokens": 40,
+  "threshold": 0,
+  "format": ["typescript"],
+  "reporters": ["console"],
+  "gitignore": true,
+  "ignore": ["**/node_modules/**", ".worktrees/**"]
+}
