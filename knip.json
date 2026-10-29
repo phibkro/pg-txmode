@@ -13,6 +13,10 @@
       "entry": ["test/**/*.test.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },
+    "packages/pg": {
+      "entry": ["test/**/*.test.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
+    },
     "tools/quality": {
       "entry": ["checkExceptions.ts"],
       "project": ["*.ts", "test/**/*.ts"]

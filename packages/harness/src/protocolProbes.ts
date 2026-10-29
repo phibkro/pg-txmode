@@ -2,10 +2,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { classifyFailure, failureOf } from "@pg-txmode/core";
 import type { FailureKind } from "@pg-txmode/core";
+import { sendCancelRequest } from "@pg-txmode/core/cancel";
 
 import { breaks, withSessions, works } from "./probe.ts";
 import type { Probe, Target } from "./probe.ts";
-import { pgConnect, rejection, sendCancel } from "./session.ts";
+import { pgConnect, rejection } from "./session.ts";
 import type { Session } from "./session.ts";
 
 const longStatement = "SELECT pg_sleep(30)";
@@ -40,7 +41,7 @@ const cancelledStatement = async (
   const running = rejection(session.query(longStatement));
 
   await untilActive(target, longStatement);
-  await sendCancel(target.endpoint, session.cancelKey);
+  await sendCancelRequest(target.endpoint, session.cancelKey);
 
   return await running;
 };

@@ -55,7 +55,7 @@ Exit 1 when a finding is an error; `--strict` makes warnings fail too. A log com
 | `packages/core/src/**` (other) | `ready`; a negative control for the changed law (spec 0001 lists them) |
 | `packages/harness/**` | sections 2 and 3 |
 | `packages/lint/**` | sections 2 and 4 on a file with a known violation (any M1 statement) |
-| `packages/pg/**` | section 2, and the adapter's own matrix (spec 0002) |
+| `packages/pg/**` | section 2, then `cd packages/pg && devenv shell -- bunx vp test` (25 tests against a throwaway PostgreSQL and PgBouncer; the abort tests take a few seconds) |
 
 ## 6. Cleanup
 

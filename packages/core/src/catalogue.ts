@@ -407,7 +407,7 @@ export const catalogue = [
       "The client goes away in the middle of a transaction (a cancelled request, a closed socket)",
     direct: probed(
       "works",
-      "The session ends and the transaction is rolled back; its locks are released."
+      "The session ends and the transaction is rolled back; its locks are released. Probed with the backend idle in the transaction; a backend that is running a statement keeps its locks until the statement ends (client_connection_check_interval is off by default), so the pg adapter cancels before it closes."
     ),
     evidence: hyperdriveEvidence,
     hyperdrive: throughHyperdrive(
@@ -421,10 +421,11 @@ export const catalogue = [
       "https://developers.cloudflare.com/workers/configuration/compatibility-flags/",
       "https://developers.cloudflare.com/workers/platform/limits/",
       `${pgDocs}/protocol-flow.html#PROTOCOL-FLOW-TERMINATION`,
+      `${pgDocs}/runtime-config-connection.html#GUC-CLIENT-CONNECTION-CHECK-INTERVAL`,
     ],
     transactionPooled: probed(
       "works",
-      "PgBouncer closes the server connection and the transaction is rolled back."
+      "PgBouncer closes the server connection and the transaction is rolled back (probed with the backend idle in the transaction; a busy backend keeps its locks until its statement ends, as on a direct connection: measured in packages/pg/test)."
     ),
   },
   {

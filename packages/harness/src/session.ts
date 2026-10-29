@@ -1,8 +1,5 @@
-import { createConnection } from "node:net";
-
+import type { CancelKey } from "@pg-txmode/core/cancel";
 import { Client } from "pg";
-
-import type { Endpoint } from "./stack.ts";
 
 declare module "pg" {
   /**
@@ -19,12 +16,6 @@ declare module "pg" {
 export type Value = string | number | boolean | null;
 
 export type Row = Readonly<Record<string, Value>>;
-
-/** The key a CancelRequest names: the process id and secret the server (or the pooler) sent at startup. */
-export interface CancelKey {
-  readonly processId: number;
-  readonly secretKey: number;
-}
 
 /**
  * One client connection, whatever the driver. The probes of this harness talk to it, so any client can be put through
@@ -102,35 +93,6 @@ export const pgConnect =
         ).rows,
     };
   };
-
-const cancelRequestCode = 80_877_102;
-
-/**
- * Sends a CancelRequest to `endpoint` on a new connection and waits for the server to close it:
- * https://www.postgresql.org/docs/current/protocol-flow.html#PROTOCOL-FLOW-CANCELING-REQUESTS. The request names the key
- * the client received from the same endpoint, so a pooler recognises it.
- */
-export const sendCancel = async (
-  endpoint: Endpoint,
-  key: CancelKey
-): Promise<void> => {
-  const { promise, resolve, reject } = Promise.withResolvers<null>();
-  const socket = createConnection({ host: endpoint.host, port: endpoint.port });
-  const packet = Buffer.alloc(16);
-
-  packet.writeInt32BE(16, 0);
-  packet.writeInt32BE(cancelRequestCode, 4);
-  packet.writeInt32BE(key.processId, 8);
-  packet.writeInt32BE(key.secretKey, 12);
-  socket.once("connect", () => {
-    socket.write(packet);
-  });
-  socket.once("error", reject);
-  socket.once("close", () => {
-    resolve(null);
-  });
-  await promise;
-};
 
 /** The error a promise rejects with, or undefined when it resolves. */
 export const rejection = async <T>(
