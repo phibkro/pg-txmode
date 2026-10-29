@@ -28,7 +28,10 @@ const stack = useStack(2);
 const withSchema = async <T>(use: () => Promise<T>): Promise<T> =>
   await withExampleSchema(targetOf(stack()), use);
 
-/** Every id a worker takes until the statement returns no row. */
+/** Claims a worker may make while draining: a wrong claim that never comes back empty ends the test at once, not by timeout. */
+const maxClaims = 50;
+
+/** Every id a worker takes until the statement returns no row (at most `maxClaims` claims). */
 const drain = async (
   connect: Connect,
   statement: string,
@@ -36,15 +39,19 @@ const drain = async (
   column: string
 ): Promise<readonly number[]> =>
   await withSessions(connect, 1, async ([session]) => {
-    const take = async (): Promise<readonly number[]> => {
-      const rows = (await session?.query(statement, values)) ?? [];
+    const take = async (left: number): Promise<readonly number[]> => {
+      const rows =
+        left === 0 ? [] : ((await session?.query(statement, values)) ?? []);
 
       return rows.length === 0
         ? []
-        : [...rows.map((row) => Number(row[column])), ...(await take())];
+        : [
+            ...rows.map((row) => Number(row[column])),
+            ...(await take(left - 1)),
+          ];
     };
 
-    return await take();
+    return await take(maxClaims);
   });
 
 const sorted = (ids: readonly (readonly number[])[]): readonly number[] =>
@@ -288,11 +295,12 @@ describe("outbox delivery (lease, token, fence)", () => {
     });
   });
 
-  test("control: the at-most-once relay this library used to ship marks the row at claim time, so a crash after it loses the message", async () => {
+  test("control: a claim that marks the row delivered, as the old relay did, leaves nothing to claim after a crash", async () => {
     await withSchema(async () => {
       await addMessages(1);
       await withTwo(stack().connect, async (crashing, other) => {
-        // The old statement: it marked the row published when it claimed it.
+        // The old relay marked the row published when it claimed it; this is that claim in the new table's words. The real
+        // pin of the defect is the mutation in spec 0004 H1 (the claim marks the row delivered): the crash test fails.
         await crashing.query(
           "UPDATE outbox SET status = 'delivered', delivered_at = now() WHERE id IN (SELECT id FROM outbox WHERE status = 'pending' ORDER BY id FOR UPDATE SKIP LOCKED LIMIT $1) RETURNING id",
           [1]
@@ -302,6 +310,16 @@ describe("outbox delivery (lease, token, fence)", () => {
         expect(await other.query(claimBatch, [1, 0])).toStrictEqual([]);
         expect((await stateOf(other, 1))?.status).toBe("delivered");
       });
+    });
+  });
+  test("a lapsed lease that nobody took over does not stale its token: the late ack still delivers", async () => {
+    await withClaimed(async (a, _b, token) => {
+      // withClaimed leases for a minute; claim again by id is refused, so lapse it by moving the lease to the past.
+      await a.query(
+        "UPDATE outbox SET claimed_until = now() - interval '1 second' WHERE id = 1"
+      );
+      expect((await a.query(ack, [1, token])).length).toBe(1);
+      expect((await stateOf(a, 1))?.status).toBe("delivered");
     });
   });
 
@@ -336,22 +354,29 @@ describe("outbox delivery (lease, token, fence)", () => {
     });
   });
 
-  test("release records the error class and the next attempt waits for its date", async () => {
-    await withClaimed(async (a, b, token) => {
-      expect(
-        (await a.query(release, [1, token, 3_600_000, "timeout"])).length
-      ).toBe(1);
-      expect(await b.query(claimById, [1, 60_000])).toStrictEqual([]);
-      expect((await stateOf(b, 1))?.last_error).toBe("timeout");
+  test.each([
+    ["claimById", claimById, [1, 60_000]],
+    ["claimBatch", claimBatch, [5, 60_000]],
+  ] as const)(
+    "release records the error class and %s waits for the next attempt's date",
+    async (_name, claim, args) => {
+      await withClaimed(async (a, b, token) => {
+        expect(
+          (await a.query(release, [1, token, 3_600_000, "timeout"])).length
+        ).toBe(1);
+        expect(await b.query(claim, args)).toStrictEqual([]);
+        expect((await stateOf(b, 1))?.last_error).toBe("timeout");
 
-      // The retry date arrives: the test moves it, the server's clock is not waited for an hour.
-      await b.query("UPDATE outbox SET next_attempt_at = now() WHERE id = 1");
+        // The retry date arrives: the test moves it, the server's clock is not waited for an hour.
+        await b.query("UPDATE outbox SET next_attempt_at = now() WHERE id = 1");
 
-      const retried = await one(b, claimById, [1, 60_000]);
+        const retried = await b.query(claim, args);
 
-      expect(Number(retried?.attempts)).toBe(2);
-    });
-  });
+        expect(retried.map((row) => Number(row.id))).toStrictEqual([1]);
+        expect(Number(retried[0]?.attempts)).toBe(2);
+      });
+    }
+  );
 
   test("a row ends only with a recorded error class, and a dead row is never claimed again", async () => {
     await withClaimed(async (a, b, token) => {

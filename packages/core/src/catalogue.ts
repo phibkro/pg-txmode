@@ -553,7 +553,7 @@ export const catalogue = [
     sources: [`${pgDocs}/sql-select.html#SQL-FOR-UPDATE-SHARE`],
     transactionPooled: probed(
       "works",
-      "Worker A claimed job 1 in an open transaction; worker B, in another with lock_timeout 500 ms, took job 2 and did not wait."
+      "Worker A claimed row 1 of the job queue, and then of the outbox (claimBatch), in an open transaction; worker B, in another with lock_timeout 500 ms, took row 2 each time and did not wait."
     ),
   },
   {

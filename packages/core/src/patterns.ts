@@ -25,7 +25,8 @@ export const exampleSchema = [
   "CREATE TABLE claims (key text PRIMARY KEY, owner text NOT NULL)",
   "CREATE TABLE documents (id int PRIMARY KEY, body text NOT NULL, version int NOT NULL DEFAULT 1)",
   "CREATE TABLE orders (id bigserial PRIMARY KEY, item text NOT NULL)",
-  "CREATE TABLE outbox (id bigserial PRIMARY KEY, topic text NOT NULL, payload jsonb NOT NULL, status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'dead')), attempts int NOT NULL DEFAULT 0, claim_token uuid, claimed_until timestamptz, next_attempt_at timestamptz NOT NULL DEFAULT now(), delivered_at timestamptz, last_error text, CHECK ((claim_token IS NULL) = (claimed_until IS NULL)), CHECK (status <> 'dead' OR last_error IS NOT NULL), CHECK ((status = 'delivered') = (delivered_at IS NOT NULL)))",
+  "CREATE TABLE outbox (id bigserial PRIMARY KEY, topic text NOT NULL, payload jsonb NOT NULL, status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'dead')), attempts int NOT NULL DEFAULT 0 CHECK (attempts >= 0), claim_token uuid, claimed_until timestamptz, next_attempt_at timestamptz NOT NULL DEFAULT now(), created_at timestamptz NOT NULL DEFAULT now(), delivered_at timestamptz, last_error text, CHECK ((claim_token IS NULL) = (claimed_until IS NULL)), CHECK (status <> 'dead' OR last_error IS NOT NULL), CHECK ((status = 'delivered') = (delivered_at IS NOT NULL)))",
+  "CREATE INDEX outbox_due ON outbox (next_attempt_at) WHERE status = 'pending'",
 ] as const;
 
 export const dropExampleSchema =
@@ -106,8 +107,15 @@ export const outbox: Pattern<"insertMessage" | "insertOrder"> = {
  * `claimById` uses no `SKIP LOCKED`, which is unverified on Hyperdrive (catalogue row `skip-locked`): the one conditional
  * `UPDATE` is the claim, and a second claimer waits for the row lock, re-reads the row, finds a live lease and matches
  * nothing. A row that comes back empty is held, delivered, dead or not yet due; the statement does not say which.
- * `$2` of the claims is the lease in milliseconds, `$3` of `release` the delay before the next attempt; `bury` needs an
- * error class (a null violates the table's CHECK), so a row ends only after a recorded failure.
+ * `$2` of the claims is the lease in milliseconds, `$3` of `release` the delay before the next attempt (`next_attempt_at`,
+ * honoured by both claims). `bury` needs an error class (a null violates the table's CHECK), so a row ends only after a
+ * recorded failure; `release` accepts a null class and then overwrites `last_error` with null, so pass one. A lease that
+ * has lapsed but was not taken over does not stale its token: the late `ack` still delivers. The `status = 'pending'`
+ * conditions of `ack`, `release` and `bury` are defence: every settle clears the token, so they change no result today.
+ *
+ * The fence relies on READ COMMITTED, PostgreSQL's default: a second claimer waits for the row lock and re-reads the row.
+ * Under REPEATABLE READ the loser of a race gets a serialization failure (40001) instead of an empty result. The example
+ * table is a test fixture: a real one wants the partial index `outbox_due` of `exampleSchema`, and deletes delivered rows.
  */
 export const outboxDelivery: Pattern<
   "ack" | "bury" | "claimBatch" | "claimById" | "release"

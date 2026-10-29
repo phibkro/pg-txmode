@@ -65,7 +65,7 @@ ack(id, token) | release(id, token, delayMs, errorClass) | bury(id, token, error
 | H2 | After the lease lapsed and a second relay claimed, the first relay's ack, release and bury change nothing; the second's ack delivers once and a repeat changes nothing | `patterns.test.ts` (stale), probe | drop `claim_token = $2::uuid` from `ack` |
 | H3 | Concurrent relays claim disjoint sets that add up to every message; a relay that holds its rows in an open transaction is skipped by a second relay, which takes the next rows instead of waiting | `patterns.test.ts` | remove only ` SKIP LOCKED` from `claimBatch`; remove the live-lease condition from `claimBatch` |
 | H4 | 20 concurrent claims by id of one row give exactly one winner, and the statement contains no `SKIP LOCKED` | `patterns.test.ts`, probe | remove `(claimed_until IS NULL OR claimed_until <= now())` from `claimById` |
-| H5 | `release` records the class and the next attempt waits for its date; `bury` needs a class and a dead row is never claimed | `patterns.test.ts` | drop `next_attempt_at <= now()` from the claims; drop the CHECK on `dead` |
+| H5 | `release` records the class and the next attempt waits for its date, in both claims; `bury` needs a class and a dead row is never claimed | `patterns.test.ts` | H5a: drop `next_attempt_at <= now()` from `claimById`; H5c: from `claimBatch`; H5b: drop the CHECK on `dead` |
 | H6 | The probe's observation equals the catalogue cells; the library's own patterns pass the lint (no error) in every mode | `probes.test.ts`, `analyze.test.ts` | change the `transactionPooled` cell of `outbox-lease` to `leaks` |
 | H7 | `bun run ready` exits 0 | `ready` | the controls above |
 
@@ -90,3 +90,8 @@ ack(id, token) | release(id, token, delayMs, errorClass) | bury(id, token, error
 ## Revisions
 
 - **2026-10-29, plan written** with the build.
+- **2026-10-29, after review round 1 of PR #6 (RevPgTx3 at `b2270c3`; none changes the journey).**
+  1. **The retry date of `claimBatch` is tested** (a medium): the release test claimed by id, so dropping `next_attempt_at <= now()` from `claimBatch` passed every test. The test "claimBatch honours the retry date" releases with a one-hour delay and expects no claim until `next_attempt_at` is moved. H5's control now runs on both claims (H5a `claimById`, H5c `claimBatch`).
+  2. **Two more tests:** a lapsed lease that nobody took over does not stale its token (the late ack delivers); `drain` is bounded at 50 claims, so a wrong claim that never comes back empty fails in milliseconds (H3b took 60 s before).
+  3. **The pattern header says what the tests found:** `release` accepts a null class and then overwrites `last_error` with null (pass one); the fence needs READ COMMITTED (under REPEATABLE READ the loser of a race gets 40001); the `status = 'pending'` conditions of `ack`, `release` and `bury` are defence (every settle clears the token, so they change no result); the example `outbox` table is a fixture, and now has the partial index `outbox_due`, `CHECK (attempts >= 0)` and `created_at`.
+  4. **Wiring that said more than it gated:** the probe `pattern-skip-locked` now also runs `claimBatch` (it exercised only the job claim); the test "control: a claim that marks the row delivered" is renamed to say that it is a rewritten statement, and that H1 is the real pin; a core test checks that every `Pattern.rows` entry is a catalogue row (nothing read the field).

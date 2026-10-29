@@ -132,7 +132,42 @@ const rowLockProbe: Probe = {
     }),
 };
 
-/** Worker A claims a job inside an open transaction; worker B, in another, must take the next job instead of waiting. */
+/**
+ * Worker A claims a row inside an open transaction; worker B, in another, must take the next row instead of waiting. Once
+ * with the job claim, once with the outbox's `claimBatch`: both are `FOR UPDATE SKIP LOCKED` statements.
+ */
+const skipsHeldRow = async (
+  a: Session,
+  b: Session,
+  claimSql: string,
+  firstArgs: readonly (string | number)[],
+  secondArgs: readonly (string | number)[]
+): Promise<string | undefined> => {
+  await a.query("BEGIN");
+
+  const first = await a.query(claimSql, firstArgs);
+
+  await b.query("BEGIN");
+  // Without SKIP LOCKED the second claim waits for the first one's row lock; 500 ms turns that into a failure.
+  await b.query("SET LOCAL lock_timeout = '500ms'");
+
+  const [second] = await Promise.allSettled([b.query(claimSql, secondArgs)]);
+
+  await a.query("ROLLBACK");
+  await b.query("ROLLBACK");
+
+  const detail =
+    second?.status === "fulfilled"
+      ? `worker A holds row ${first[0]?.id} in an open transaction; worker B took row ${second.value[0]?.id}`
+      : `worker B did not get a row: ${second?.reason}`;
+
+  return second?.status === "fulfilled" &&
+    Number(first[0]?.id) === 1 &&
+    Number(second.value[0]?.id) === 2
+    ? undefined
+    : detail;
+};
+
 const skipLockedProbe: Probe = {
   id: "pattern-skip-locked",
   maxPreparedStatements: 1000,
@@ -149,31 +184,34 @@ const skipLockedProbe: Probe = {
           await a.query(
             "INSERT INTO jobs (state) SELECT 'queued' FROM generate_series(1, 3)"
           );
-          await a.query("BEGIN");
+          await a.query(
+            "INSERT INTO outbox (topic, payload) SELECT 't', '{}' FROM generate_series(1, 3)"
+          );
 
-          const first = await a.query(claimJob.statements.claim, ["a"]);
+          const jobs = await skipsHeldRow(
+            a,
+            b,
+            claimJob.statements.claim,
+            ["a"],
+            ["b"]
+          );
 
-          await b.query("BEGIN");
-          // Without SKIP LOCKED the second claim waits for the first one's row lock; 500 ms turns that into a failure.
-          await b.query("SET LOCAL lock_timeout = '500ms'");
-
-          const [second] = await Promise.allSettled([
-            b.query(claimJob.statements.claim, ["b"]),
-          ]);
-
-          await a.query("ROLLBACK");
-          await b.query("ROLLBACK");
+          const outboxRows = await skipsHeldRow(
+            a,
+            b,
+            outboxDelivery.statements.claimBatch,
+            [1, 60_000],
+            [1, 60_000]
+          );
 
           const detail =
-            second?.status === "fulfilled"
-              ? `worker A holds job ${first[0]?.id} in an open transaction; worker B took job ${second.value[0]?.id}`
-              : `worker B did not get a job: ${second?.reason}`;
+            "worker A claims row 1 in an open transaction; worker B, in another, takes row 2 without waiting: the job claim and the outbox claimBatch";
 
-          return second?.status === "fulfilled" &&
-            Number(first[0]?.id) === 1 &&
-            Number(second.value[0]?.id) === 2
+          return jobs === undefined && outboxRows === undefined
             ? works(detail)
-            : breaks(detail);
+            : breaks(
+                `jobs: ${jobs ?? "ok"}; claimBatch: ${outboxRows ?? "ok"}`
+              );
         })
     ),
 };
