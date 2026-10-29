@@ -1,0 +1,562 @@
+// Spec 0005: Effect 4.1.0 PersistedQueue (SQL store) through the pg-txmode harness: PostgreSQL directly (control) and
+// behind PgBouncer in transaction mode. Scratch script: it lives outside the repository because Effect may only enter the
+// repository through the Effect adapter package (spec 0003); the repository keeps this file as evidence, as text.
+//
+// usage: bun probe.ts <scenario>...   scenarios: offer takers twostores stale crash prepare stress m2b
+// Edit before running: the import of the harness (line 15, an absolute path) and the path of child.ts (line 324).
+import { Duration, Effect, Fiber, Layer, Redacted, Schema } from "effect";
+import { PersistedQueue } from "effect/persistence";
+import { SqlClient } from "effect/sql";
+import { PgClient } from "@effect/sql-pg";
+import {
+  neonProfile,
+  startPgBouncer,
+  startPostgres,
+} from "/srv/share/projects/pg-txmode/packages/harness/src/index.ts";
+
+const Msg = Schema.Struct({ n: Schema.Number });
+
+interface Target {
+  readonly name: string;
+  readonly url: string;
+  readonly prepare?: boolean;
+}
+
+const layersFor = (
+  target: Target,
+  table: string,
+  store: {
+    readonly lockExpiration?: Duration.Input;
+    readonly lockRefreshInterval?: Duration.Input;
+  } = {}
+) => {
+  const Db = PgClient.layer({
+    prepare: target.prepare,
+    url: Redacted.make(target.url),
+  });
+
+  const Store = PersistedQueue.layerStoreSql({
+    pollInterval: "50 millis",
+    tableName: table,
+    ...store,
+  }).pipe(Layer.provide(Db));
+
+  return Layer.mergeAll(Db, PersistedQueue.layer.pipe(Layer.provide(Store)));
+};
+
+const rows = (table: string) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+
+    return yield* sql<{
+      readonly id: string;
+      readonly state: string;
+      readonly attempts: number;
+      readonly held: boolean;
+    }>`SELECT id, state, attempts::int AS attempts, (acquired_by IS NOT NULL) AS held FROM ${sql(table)} ORDER BY sequence`;
+  });
+
+// 1. offer inside and outside a transaction, with a business row
+const offer = (target: Target) =>
+  Effect.gen(function* () {
+    const table = `q_offer_${target.name}`;
+    const sql = yield* SqlClient.SqlClient;
+    const q = yield* PersistedQueue.make({ name: "t", schema: Msg });
+    const count = () =>
+      sql<{ readonly n: number }>`SELECT count(*)::int AS n FROM ${sql(table)}`.pipe(
+        Effect.map((r) => r[0]?.n ?? -1)
+      );
+
+    yield* sql`CREATE TABLE IF NOT EXISTS biz (id int)`;
+    yield* sql.withTransaction(
+      q.offer({ n: 1 }, { id: "a" }).pipe(Effect.andThen(Effect.fail("boom")))
+    ).pipe(Effect.ignore);
+
+    const afterRollback = yield* count();
+
+    yield* sql.withTransaction(q.offer({ n: 2 }, { id: "b" }));
+
+    const afterCommit = yield* count();
+
+    yield* q.offer({ n: 3 }, { id: "c" });
+
+    const outside = yield* count();
+
+    yield* sql
+      .withTransaction(
+        sql`INSERT INTO biz VALUES (1)`.pipe(
+          Effect.andThen(q.offer({ n: 4 }, { id: "d" })),
+          Effect.andThen(Effect.fail("boom"))
+        )
+      )
+      .pipe(Effect.ignore);
+
+    const biz = yield* sql<{ readonly n: number }>`SELECT count(*)::int AS n FROM biz`;
+    const d = yield* sql<{ readonly n: number }>`SELECT count(*)::int AS n FROM ${sql(table)} WHERE id = 'd'`;
+
+    // The same message id offered twice stores one row (ON CONFLICT DO NOTHING).
+    yield* q.offer({ n: 5 }, { id: "e" });
+    yield* q.offer({ n: 5 }, { id: "e" });
+
+    const e = yield* sql<{ readonly n: number }>`SELECT count(*)::int AS n FROM ${sql(table)} WHERE id = 'e'`;
+
+    yield* sql`DROP TABLE biz`;
+
+    return {
+      afterRollback,
+      afterCommit,
+      outsideATransaction: outside,
+      bizRowsAfterRollback: biz[0]?.n,
+      queueRowsOfRolledBackOffer: d[0]?.n,
+      sameIdOfferedTwice: e[0]?.n,
+    };
+  }).pipe(Effect.provide(layersFor(target, `q_offer_${target.name}`)), Effect.scoped);
+
+// 2. concurrent takers: 4 loops, 40 items, 10 rounds; every item taken exactly once and completed
+const takers = (target: Target) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const rounds: Array<{
+      readonly taken: number;
+      readonly distinct: number;
+      readonly completed: number;
+      readonly ms: number;
+    }> = [];
+
+    for (let round = 0; round < 10; round += 1) {
+      const q = yield* PersistedQueue.make({ name: `r${round}`, schema: Msg });
+      const taken: string[] = [];
+      const started = Date.now();
+
+      for (let i = 0; i < 40; i += 1) {
+        yield* q.offer({ n: i }, { id: `m${i}` });
+      }
+
+      const workers = yield* Effect.forEach(
+        [1, 2, 3, 4],
+        () =>
+          Effect.forkChild(
+            Effect.forever(
+              q.take((_value, meta) =>
+                Effect.sync(() => {
+                  taken.push(meta.id);
+                })
+              )
+            )
+          )
+      );
+
+      for (let tries = 0; tries < 400 && taken.length < 40; tries += 1) {
+        yield* Effect.sleep("50 millis");
+      }
+
+      yield* Effect.sleep("300 millis");
+      yield* Effect.forEach(workers, Fiber.interrupt, { discard: true });
+
+      const done = yield* sql<{ readonly n: number }>`SELECT count(*)::int AS n FROM ${sql(
+        `q_takers_${target.name}`
+      )} WHERE queue_name = ${`r${round}`} AND state = 'completed'`;
+
+      rounds.push({
+        taken: taken.length,
+        distinct: new Set(taken).size,
+        completed: done[0]?.n ?? -1,
+        ms: Date.now() - started,
+      });
+    }
+
+    return {
+      rounds: rounds.length,
+      everyRoundTakenExactlyOnce: rounds.every((r) => r.taken === 40 && r.distinct === 40),
+      everyRoundCompleted: rounds.every((r) => r.completed === 40),
+      perRound: rounds,
+    };
+  }).pipe(Effect.provide(layersFor(target, `q_takers_${target.name}`)), Effect.scoped);
+
+// 3. stale ack: A stalls past the lease, B takes the row and completes (or fails it back), then A finishes
+const stale = (target: Target) =>
+  Effect.gen(function* () {
+    const results: Array<Record<string, unknown>> = [];
+
+    for (const bOutcome of ["completes", "fails"] as const) {
+      for (let round = 0; round < 3; round += 1) {
+        const table = `q_stale_${bOutcome}_${round}_${target.name}`;
+        const log: string[] = [];
+        const run = Effect.gen(function* () {
+          const q = yield* PersistedQueue.make({ name: "s", schema: Msg, maxAttempts: 5 });
+
+          yield* q.offer({ n: 1 }, { id: "x" });
+
+          const a = yield* Effect.forkChild(
+            q.take(() =>
+              Effect.gen(function* () {
+                log.push("A-start");
+                yield* Effect.sleep("2500 millis");
+                log.push("A-done");
+
+                return "A";
+              })
+            )
+          );
+
+          yield* Effect.sleep("1500 millis");
+
+          const b = yield* q
+            .take((_v, meta) =>
+              bOutcome === "completes"
+                ? Effect.sync(() => {
+                    log.push(`B-done(attempts ${meta.attempts})`);
+                  })
+                : Effect.fail("B-fails")
+            )
+            .pipe(Effect.exit);
+
+          yield* Fiber.await(a);
+
+          const state = yield* rows(table);
+
+          return { log, bExit: b._tag, row: state[0] };
+        });
+
+        results.push({
+          bOutcome,
+          ...(yield* run.pipe(
+            Effect.provide(layersFor(target, table, { lockExpiration: "1 second", lockRefreshInterval: "1 minute" })),
+            Effect.scoped
+          )),
+        });
+      }
+    }
+
+    return results;
+  });
+
+// 4. prepared statements: the store behind PgBouncer with max_prepared_statements 0 and the client's default `prepare`
+const prepare = (target: Target) =>
+  Effect.gen(function* () {
+    const q = yield* PersistedQueue.make({ name: "p", schema: Msg });
+    const sql = yield* SqlClient.SqlClient;
+    const seen: number[] = [];
+
+    for (let i = 0; i < 20; i += 1) {
+      yield* q.offer({ n: i }, { id: `p${i}` });
+    }
+
+    const worker = yield* Effect.forkChild(
+      Effect.forever(
+        q.take((v) =>
+          Effect.sync(() => {
+            seen.push(v.n);
+          })
+        )
+      )
+    );
+
+    for (let tries = 0; tries < 200 && seen.length < 20; tries += 1) {
+      yield* Effect.sleep("50 millis");
+    }
+
+    yield* Fiber.interrupt(worker);
+
+    const count = yield* sql<{ readonly n: number }>`SELECT count(*)::int AS n FROM ${sql(`q_prepare_${target.name}`)} WHERE state = 'completed'`;
+
+    return { offered: 20, taken: seen.length, completedRows: count[0]?.n };
+  }).pipe(Effect.provide(layersFor(target, `q_prepare_${target.name}`)), Effect.scoped);
+
+// 4b. stress: 4 takers and 4 concurrent offerers, 200 elements, on a pooler with a pool of one or three server connections
+const stress = (target: Target) =>
+  Effect.gen(function* () {
+    const q = yield* PersistedQueue.make({ name: "z", schema: Msg });
+    const sql = yield* SqlClient.SqlClient;
+    const seen: string[] = [];
+
+    const offerers = yield* Effect.forEach(
+      [0, 1, 2, 3],
+      (o) =>
+        Effect.forkChild(
+          Effect.forEach(
+            Array.from({ length: 50 }, (_, i) => i),
+            (i) => q.offer({ n: i }, { id: `z${o}-${i}` })
+          )
+        )
+    );
+
+    const workers = yield* Effect.forEach(
+      [1, 2, 3, 4],
+      () =>
+        Effect.forkChild(
+          Effect.forever(
+            q.take((_v, meta) =>
+              Effect.sync(() => {
+                seen.push(meta.id);
+              })
+            )
+          )
+        )
+    );
+
+    yield* Effect.forEach(offerers, Fiber.join, { discard: true });
+
+    for (let tries = 0; tries < 800 && seen.length < 200; tries += 1) {
+      yield* Effect.sleep("50 millis");
+    }
+
+    yield* Effect.sleep("300 millis");
+    yield* Effect.forEach(workers, Fiber.interrupt, { discard: true });
+
+    const done = yield* sql<{ readonly n: number }>`SELECT count(*)::int AS n FROM ${sql(`q_stress_${target.name}`)} WHERE state = 'completed'`;
+
+    return { offered: 200, taken: seen.length, distinct: new Set(seen).size, completedRows: done[0]?.n };
+  }).pipe(Effect.provide(layersFor(target, `q_stress_${target.name}`)), Effect.scoped);
+
+// 5. a real crash: a child process takes the element and is killed with SIGKILL; the parent takes it after the lease.
+// The lease, in seconds: the default 2; LOCK_SECONDS=3600 is the control (nothing may be taken within seconds).
+const lockSeconds = Number(process.env.LOCK_SECONDS ?? "2");
+
+const crash = (target: Target) =>
+  Effect.gen(function* () {
+    const table = `q_crash_${target.name}`;
+    const q = yield* PersistedQueue.make({ name: "c", schema: Msg });
+    const sql = yield* SqlClient.SqlClient;
+
+    yield* q.offer({ n: 1 }, { id: "c" });
+
+    const child = Bun.spawn([process.execPath, "/tmp/pgtx0005/child.ts", target.url, table, String(lockSeconds)], {
+      stderr: "inherit",
+      stdout: "pipe",
+    });
+
+    const claimed = yield* Effect.promise(async () => {
+      const reader = child.stdout.getReader();
+      const decoder = new TextDecoder();
+      let text = "";
+
+      for (let reads = 0; reads < 400 && !text.includes("CLAIMED"); reads += 1) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        text += decoder.decode(value);
+      }
+
+      return text.trim();
+    });
+
+    const killedAt = Date.now();
+
+    child.kill("SIGKILL");
+    yield* Effect.promise(async () => await child.exited);
+
+    const between = yield* rows(table);
+    const takenAfter = yield* q
+      .take((_v, meta) => Effect.sync(() => ({ attempts: meta.attempts, afterMs: Date.now() - killedAt })))
+      .pipe(
+        Effect.timeoutOption(Duration.seconds(lockSeconds + 6)),
+        Effect.map((taken) => (taken._tag === "Some" ? taken.value : `not taken within ${lockSeconds + 6} s`))
+      );
+
+    const after = yield* rows(table);
+
+    return { lockSeconds, childSaid: claimed, rowAfterKill: between[0], takenAfter, rowAfterTake: after[0] };
+  }).pipe(
+    Effect.provide(
+      layersFor(target, `q_crash_${target.name}`, { lockExpiration: `${lockSeconds} seconds`, lockRefreshInterval: "1 minute" })
+    ),
+    Effect.scoped
+  );
+
+// 2b. two store instances (two processes' worth: separate pools, separate pollers) on one queue; 2 takers each; 40 items,
+// 10 rounds. This is where the claim statement has to hold against another poller: one store alone has one poller.
+const twostores = (target: Target) =>
+  Effect.gen(function* () {
+    const table = `q_two_${target.name}`;
+    const ctxA = yield* Layer.build(layersFor(target, table));
+    const ctxB = yield* Layer.build(layersFor(target, table));
+    const sql = yield* SqlClient.SqlClient.pipe(Effect.provide(ctxA));
+    const rounds: Array<{ readonly taken: number; readonly distinct: number; readonly completed: number }> = [];
+
+    for (let round = 0; round < 10; round += 1) {
+      const name = `t${round}`;
+      const qA = yield* PersistedQueue.make({ name, schema: Msg }).pipe(Effect.provide(ctxA));
+      const qB = yield* PersistedQueue.make({ name, schema: Msg }).pipe(Effect.provide(ctxB));
+      const taken: string[] = [];
+
+      for (let i = 0; i < 40; i += 1) {
+        yield* qA.offer({ n: i }, { id: `m${i}` });
+      }
+
+      const workers = yield* Effect.forEach([qA, qA, qB, qB], (q) =>
+        Effect.forkChild(
+          Effect.forever(
+            q.take((_v, meta) =>
+              Effect.sync(() => {
+                taken.push(meta.id);
+              })
+            )
+          )
+        )
+      );
+
+      for (let tries = 0; tries < 400 && taken.length < 40; tries += 1) {
+        yield* Effect.sleep("50 millis");
+      }
+
+      yield* Effect.sleep("500 millis");
+      yield* Effect.forEach(workers, Fiber.interrupt, { discard: true });
+
+      const done = yield* sql<{ readonly n: number }>`SELECT count(*)::int AS n FROM ${sql(table)} WHERE queue_name = ${name} AND state = 'completed'`;
+
+      rounds.push({ taken: taken.length, distinct: new Set(taken).size, completed: done[0]?.n ?? -1 });
+    }
+
+    return {
+      rounds: rounds.length,
+      everyRoundTakenExactlyOnce: rounds.every((r) => r.taken === 40 && r.distinct === 40),
+      everyRoundCompleted: rounds.every((r) => r.completed === 40),
+      perRound: rounds,
+    };
+  }).pipe(Effect.scoped);
+
+// 6. the M2b class (research report): is the unnamed/named statement path of the client safe behind a pooler with
+// max_prepared_statements = 0? 8 fibers, each with SQL text of its own, 150 round trips each; every answer must be its own.
+const m2b = (target: Target) =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    let wrong = 0;
+    let errors = 0;
+    const errorCodes: Record<string, number> = {};
+    const pids = new Set<number>();
+
+    yield* Effect.forEach(
+      Array.from({ length: 8 }, (_, i) => i),
+      (fiber) =>
+        Effect.forEach(
+          Array.from({ length: 150 }, (_, k) => k),
+          (k) =>
+            sql
+              .unsafe<{ readonly fiber: number; readonly k: number; readonly pid: number }>(
+                `SELECT ${fiber}::int AS fiber, $1::int AS k, pg_backend_pid() AS pid`,
+                [k]
+              )
+              .pipe(
+                Effect.tap((r) =>
+                  Effect.sync(() => {
+                    pids.add(r[0]?.pid ?? -1);
+
+                    if (r[0]?.fiber !== fiber || r[0]?.k !== k) {
+                      wrong += 1;
+                    }
+                  })
+                ),
+                Effect.catch((e) =>
+                  Effect.sync(() => {
+                    errors += 1;
+
+                    const code = String(e).slice(0, 80);
+
+                    errorCodes[code] = (errorCodes[code] ?? 0) + 1;
+                  })
+                )
+              ),
+          { concurrency: 1 }
+        ),
+      { concurrency: 8, discard: true }
+    );
+
+    return { statements: 1200, wrongAnswers: wrong, errors, errorCodes, distinctServerBackends: pids.size };
+  }).pipe(Effect.provide(PgClient.layer({ prepare: target.prepare, url: Redacted.make(target.url) })), Effect.scoped);
+
+const outcome = async (name: string, effect: Effect.Effect<unknown, unknown, never>, limitMs: number) => {
+  const started = Date.now();
+
+  try {
+    const value = await Effect.runPromise(
+      effect.pipe(Effect.timeout(Duration.millis(limitMs)))
+    );
+
+    return { name, ok: true, ms: Date.now() - started, value };
+  } catch (error) {
+    return {
+      name,
+      ok: false,
+      ms: Date.now() - started,
+      error: String(error).slice(0, 400),
+    };
+  }
+};
+
+const [, , ...wanted] = process.argv;
+const postgres = await startPostgres();
+const bouncer1000 = await startPgBouncer(postgres, {
+  ...neonProfile(postgres.maxConnections),
+  defaultPoolSize: 3,
+});
+const bouncer0 = await startPgBouncer(postgres, {
+  ...neonProfile(postgres.maxConnections),
+  defaultPoolSize: 3,
+  maxPreparedStatements: 0,
+});
+const bouncer0pool1 = await startPgBouncer(postgres, {
+  ...neonProfile(postgres.maxConnections),
+  defaultPoolSize: 1,
+  maxPreparedStatements: 0,
+});
+
+const targets: readonly Target[] = [
+  { name: "direct", url: postgres.endpoint.url },
+  { name: "pgb1000", url: bouncer1000.endpoint.url },
+];
+
+const results: unknown[] = [];
+
+try {
+  const scenarios: Record<string, (t: Target) => Effect.Effect<unknown, unknown, never>> = {
+    crash,
+    twostores,
+    offer,
+    takers,
+    stale,
+  };
+
+  for (const scenario of wanted) {
+    if (scenario === "prepare" || scenario === "stress" || scenario === "m2b") {
+      for (const t of [
+        { name: "direct", url: postgres.endpoint.url },
+        { name: "pgb1000", url: bouncer1000.endpoint.url },
+        { name: "pgb0", url: bouncer0.endpoint.url },
+        { name: "pgb0noprep", url: bouncer0.endpoint.url, prepare: false },
+        { name: "pgb0pool1", url: bouncer0pool1.endpoint.url },
+      ]) {
+        const run = { m2b, prepare, stress }[scenario];
+
+        results.push({
+          scenario,
+          target: t.name,
+          ...(await outcome(scenario, run(t), 90_000)),
+        });
+      }
+
+      continue;
+    }
+
+    const run = scenarios[scenario];
+
+    if (run === undefined) {
+      continue;
+    }
+
+    for (const t of targets) {
+      results.push({ scenario, target: t.name, ...(await outcome(scenario, run(t), 120_000)) });
+    }
+  }
+} finally {
+  await bouncer0pool1.stop();
+  await bouncer0.stop();
+  await bouncer1000.stop();
+  await postgres.stop();
+}
+
+console.log(JSON.stringify(results, null, 2));
+process.exit(0);

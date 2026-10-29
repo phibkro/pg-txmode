@@ -1,0 +1,163 @@
+# raw output of: bun txprobe.ts   (each cell a child process, killed after 30 s)
+# date and tool versions:
+2026-10-29T21:47:19Z
+PgBouncer 1.25.2
+postgres (PostgreSQL) 18.6
+1.4.2
+# headroom.sh before the run:
+ok    memory: MemAvailable 19372 MiB of 64220 MiB, 25.3823% free after 3072 MiB (need >= 20%)
+ok    swap-in: 350 pages/s over 10s (need < 1000)
+ok    memory PSI: full avg60 1.49% (need < 10%; avg10 3.57% is reported, not gated)
+ok    load: 1-minute load average 11.97 on 32 threads (need < 32)
+ok    disk <home>/.local/state/pg-txmode-verify: 314831 MiB free (need >= 1024 MiB: twice the expected 512 MiB of writes)
+ok    disk /srv/share/projects/pg-txmode: 314831 MiB free (need >= 1024 MiB: twice the expected 512 MiB of writes)
+info  psi memory some: avg10=3.67 avg60=1.55
+info  psi cpu: avg10=5.22
+info  psi io: avg10=13.41
+# output:
+[
+  {
+    "mode": "offer",
+    "target": "direct",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.3,
+    "final": "done committed=400 failed=0 {} queueRows=400"
+  },
+  {
+    "mode": "offer",
+    "target": "pgb1000",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.3,
+    "final": "done committed=400 failed=0 {} queueRows=400"
+  },
+  {
+    "mode": "offer",
+    "target": "pgb0",
+    "prepare": true,
+    "finished": false,
+    "seconds": 30,
+    "final": "KILLED after 30 s; last: progress committed=20 failed=378 {\"Fail 26000 prepared statement does not exist\":7,\"Die 26000 prepared statement does not exist\":1,\"Fail 25P02 transaction aborted\":370}"
+  },
+  {
+    "mode": "offer",
+    "target": "pgb0noprep",
+    "prepare": false,
+    "finished": true,
+    "seconds": 0.3,
+    "final": "done committed=400 failed=0 {} queueRows=400"
+  },
+  {
+    "mode": "offer",
+    "target": "pgb0pool1",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.5,
+    "final": "done committed=400 failed=0 {} queueRows=400"
+  },
+  {
+    "mode": "offer",
+    "target": "pgb0pool1noprep",
+    "prepare": false,
+    "finished": true,
+    "seconds": 0.6,
+    "final": "done committed=400 failed=0 {} queueRows=400"
+  },
+  {
+    "mode": "selects",
+    "target": "direct",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.3,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "selects",
+    "target": "pgb1000",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.4,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "selects",
+    "target": "pgb0",
+    "prepare": true,
+    "finished": false,
+    "seconds": 30,
+    "final": "KILLED after 30 s; last: progress committed=16 failed=382 {\"Fail 26000 prepared statement does not exist\":8,\"Die 26000 prepared statement does not exist\":3,\"Fail 25P02 transaction aborted\":371}"
+  },
+  {
+    "mode": "selects",
+    "target": "pgb0noprep",
+    "prepare": false,
+    "finished": true,
+    "seconds": 0.4,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "selects",
+    "target": "pgb0pool1",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.5,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "selects",
+    "target": "pgb0pool1noprep",
+    "prepare": false,
+    "finished": true,
+    "seconds": 0.6,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "autocommit",
+    "target": "direct",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.3,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "autocommit",
+    "target": "pgb1000",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.3,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "autocommit",
+    "target": "pgb0",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.4,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "autocommit",
+    "target": "pgb0noprep",
+    "prepare": false,
+    "finished": true,
+    "seconds": 0.3,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "autocommit",
+    "target": "pgb0pool1",
+    "prepare": true,
+    "finished": true,
+    "seconds": 0.3,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  },
+  {
+    "mode": "autocommit",
+    "target": "pgb0pool1noprep",
+    "prepare": false,
+    "finished": true,
+    "seconds": 0.3,
+    "final": "done committed=400 failed=0 {} queueRows=-"
+  }
+]

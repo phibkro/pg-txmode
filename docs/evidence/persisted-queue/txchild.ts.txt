@@ -1,0 +1,93 @@
+// Child of txprobe.ts: N small transactions, 8 at a time, on one URL; progress is printed every second so a hang can be seen
+// and the process killed (an Effect timeout cannot interrupt a hung sql-pg client).
+// usage: bun txchild.ts <url> <prepare:true|false> <mode:offer|selects|autocommit> <total> <table>
+import { Cause, Effect, Layer, Redacted, Schema } from "effect";
+import { PersistedQueue } from "effect/persistence";
+import { SqlClient } from "effect/sql";
+import { PgClient } from "@effect/sql-pg";
+
+const [, , url = "", prepareText = "true", mode = "offer", totalText = "400", table = "q_tx"] = process.argv;
+const total = Number(totalText);
+const Msg = Schema.Struct({ n: Schema.Number });
+const Db = PgClient.layer({ maxConnections: 5, prepare: prepareText === "true", url: Redacted.make(url) });
+const Store = PersistedQueue.layerStoreSql({ pollInterval: "50 millis", tableName: table }).pipe(Layer.provide(Db));
+const Live = Layer.mergeAll(Db, PersistedQueue.layer.pipe(Layer.provide(Store)));
+
+let committed = 0;
+let failed = 0;
+const failures: Record<string, number> = {};
+
+/** The reason of a failure, by the server message in its cause chain (sql-pg 4.1.0 does not expose the SQLSTATE as a field). */
+const codeOf = (cause: Cause.Cause<unknown>): string => {
+  const text = Cause.pretty(cause);
+  const kind = cause.reasons[0]?._tag ?? "?";
+  const reason = /does not exist/.test(text)
+    ? "26000 prepared statement does not exist"
+    : /current transaction is aborted/.test(text)
+      ? "25P02 transaction aborted"
+      : /already exists/.test(text)
+        ? "42P05 statement already exists"
+        : /PersistedQueueError/.test(text)
+          ? "PersistedQueueError"
+          : "other";
+
+  return `${kind} ${reason}`;
+};
+
+const program = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  const q = yield* PersistedQueue.make({ name: "t", schema: Msg });
+
+  yield* sql`CREATE TABLE IF NOT EXISTS biz (id int)`;
+
+  const selects = Effect.gen(function* () {
+    yield* sql`select ${1}::int as a`;
+    yield* sql`select ${1}::int + ${1}::int as a`;
+    yield* sql`select ${1}::int * ${3}::int as a`;
+  });
+
+  setInterval(() => {
+    console.log(`progress committed=${committed} failed=${failed} ${JSON.stringify(failures)}`);
+  }, 1000);
+
+  yield* Effect.forEach(
+    Array.from({ length: total }, (_, i) => i),
+    (i) => {
+      const body =
+        mode === "offer"
+          ? sql.withTransaction(sql`INSERT INTO biz VALUES (${i})`.pipe(Effect.andThen(q.offer({ n: i }, { id: `i${i}` }))))
+          : mode === "selects"
+            ? sql.withTransaction(selects)
+            : selects;
+
+      return Effect.exit(body).pipe(
+        Effect.tap((exit) =>
+          Effect.sync(() => {
+            if (exit._tag === "Success") {
+              committed += 1;
+            } else {
+              failed += 1;
+
+              const code = codeOf(exit.cause);
+
+              failures[code] = (failures[code] ?? 0) + 1;
+            }
+          })
+        )
+      );
+    },
+    { concurrency: 8, discard: true }
+  );
+
+  const rows = mode === "offer" ? yield* sql<{ readonly n: number }>`SELECT count(*)::int AS n FROM ${sql(table)}` : [];
+
+  console.log(`done committed=${committed} failed=${failed} ${JSON.stringify(failures)} queueRows=${rows[0]?.n ?? "-"}`);
+});
+
+Effect.runPromise(program.pipe(Effect.provide(Live), Effect.scoped)).then(
+  () => process.exit(0),
+  (e) => {
+    console.log(`crashed ${String(e).slice(0, 200)}`);
+    process.exit(1);
+  }
+);

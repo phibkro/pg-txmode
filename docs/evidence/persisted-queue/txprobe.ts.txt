@@ -1,0 +1,62 @@
+// Spec 0005: transactional workloads on the targets, each in a child process that is killed after 30 s.
+// usage: bun txprobe.ts   (prints one JSON array)
+import { neonProfile, startPgBouncer, startPostgres } from "/srv/share/projects/pg-txmode/packages/harness/src/index.ts";
+
+const here = import.meta.dir;
+const postgres = await startPostgres();
+const bouncer = (maxPreparedStatements: number, defaultPoolSize: number) =>
+  startPgBouncer(postgres, { ...neonProfile(postgres.maxConnections), defaultPoolSize, maxPreparedStatements });
+const b1000 = await bouncer(1000, 3);
+const b0 = await bouncer(0, 3);
+const b0pool1 = await bouncer(0, 1);
+
+const targets = [
+  { name: "direct", url: postgres.endpoint.url, prepare: true },
+  { name: "pgb1000", url: b1000.endpoint.url, prepare: true },
+  { name: "pgb0", url: b0.endpoint.url, prepare: true },
+  { name: "pgb0noprep", url: b0.endpoint.url, prepare: false },
+  { name: "pgb0pool1", url: b0pool1.endpoint.url, prepare: true },
+  { name: "pgb0pool1noprep", url: b0pool1.endpoint.url, prepare: false },
+];
+
+const modes = (process.env.MODES ?? "offer,selects,autocommit").split(",");
+const results: unknown[] = [];
+
+try {
+  for (const mode of modes) {
+    for (const t of targets) {
+      const child = Bun.spawn(
+        [process.execPath, `${here}/txchild.ts`, t.url, String(t.prepare), mode, "400", `q_tx_${mode}_${t.name}`],
+        { stdout: "pipe", stderr: "pipe" }
+      );
+
+      const killer = setTimeout(() => child.kill("SIGKILL"), 30_000);
+      const started = Date.now();
+      const out = await new Response(child.stdout).text();
+
+      clearTimeout(killer);
+      await child.exited;
+
+      const lines = out.trim().split("\n");
+      const done = lines.find((l) => l.startsWith("done "));
+      const last = lines.at(-1) ?? "";
+
+      results.push({
+        mode,
+        target: t.name,
+        prepare: t.prepare,
+        finished: done !== undefined,
+        seconds: Math.round((Date.now() - started) / 100) / 10,
+        final: done ?? `KILLED after 30 s; last: ${last}`,
+      });
+    }
+  }
+} finally {
+  await b0pool1.stop();
+  await b0.stop();
+  await b1000.stop();
+  await postgres.stop();
+}
+
+console.log(JSON.stringify(results, null, 2));
+process.exit(0);

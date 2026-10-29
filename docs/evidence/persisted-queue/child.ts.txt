@@ -1,0 +1,37 @@
+// Child of probe.ts scenario `crash`: takes one element, says so, and stalls until it is killed (a worker that dies
+// between claim and ack). usage: bun child.ts <url> <table> [lockSeconds]
+import { Effect, Layer, Redacted, Schema } from "effect";
+import { PersistedQueue } from "effect/persistence";
+import { PgClient } from "@effect/sql-pg";
+
+const [, , url = "", table = "q", lockSeconds = "2"] = process.argv;
+const Msg = Schema.Struct({ n: Schema.Number });
+const Db = PgClient.layer({ url: Redacted.make(url) });
+
+const Store = PersistedQueue.layerStoreSql({
+  lockExpiration: `${lockSeconds} seconds`,
+  lockRefreshInterval: "1 minute",
+  pollInterval: "50 millis",
+  tableName: table,
+}).pipe(Layer.provide(Db));
+
+const program = Effect.gen(function* () {
+  const q = yield* PersistedQueue.make({ name: "c", schema: Msg });
+
+  yield* q.take((_value, meta) =>
+    Effect.gen(function* () {
+      console.log(`CLAIMED attempts=${meta.attempts}`);
+      yield* Effect.sleep("1 hour");
+    })
+  );
+});
+
+Effect.runPromise(
+  program.pipe(
+    Effect.provide(Layer.mergeAll(Db, PersistedQueue.layer.pipe(Layer.provide(Store)))),
+    Effect.scoped
+  )
+).then(
+  () => process.exit(0),
+  () => process.exit(1)
+);
