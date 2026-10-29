@@ -14,4 +14,9 @@
     pkgs.postgresql_18
     pkgs.pgbouncer
   ];
+
+  # `devenv up` starts the same throwaway stack as `bun run stack` (packages/harness/src/cli.ts, command `up`): PostgreSQL on
+  # :54320 and PgBouncer with Neon's settings (packages/harness/src/profile.ts) on :64320. It moved here from spec 0000 together
+  # with its script.
+  processes.stack.exec = "bun run stack";
 }
