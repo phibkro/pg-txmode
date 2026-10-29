@@ -93,7 +93,7 @@ export const untilRunning = (text: string) =>
     yield* Effect.repeat(
       Effect.map(
         observer`select count(*)::int as n from pg_stat_activity
-          where state = 'active' and query like ${`${text}%`} and pid <> pg_backend_pid()`,
+          where state = 'active' and query like ${`%${text}%`} and pid <> pg_backend_pid()`,
         (rows) => Number(rows[0]?.n ?? 0)
       ),
       { schedule: Schedule.spaced("20 millis"), until: (n) => n > 0 }

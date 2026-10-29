@@ -98,7 +98,7 @@ Planned only unless marked built.
 2. Spec 0001: the core, the harness and the lint (built, in review).
 3. Spec 0002: the `pg` (node-postgres) adapter (built, in review).
 4. postgres.js adapter: Cloudflare's page says `prepare: false` hangs there, the Supabase page says pipelining breaks; a probe settles which.
-5. `@effect/sql-pg`, Drizzle `effect-postgres` and Effect `SqlModel` (the only package that may depend on Effect). It carries the reproduction of the `@effect/sql-pg` hang of the research report (M2b).
+5. Spec 0003: `@pg-txmode/effect`, a `SqlClient` and a transaction door for Effect, built on `@effect/sql-pg` and configured from the connection mode (built, in review). It is the only package that depends on Effect, and it reproduces and avoids the `@effect/sql-pg` hang of the research report (M2b). Drizzle `effect-postgres` and Effect `SqlModel` on top of it: planned.
 6. A deployed Hyperdrive probe Worker, the only source of Hyperdrive truth. It needs the operator's Cloudflare credentials, so the steps are a [wizard](docs/wizard/hyperdrive-probe.md), not a script anyone runs for them.
 
 ## Licence

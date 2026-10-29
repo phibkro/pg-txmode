@@ -57,7 +57,7 @@ const sharedNameStep: Step = async (session: Session, client, i) => {
  * Protocol-level named statements, with PgBouncer tracking them (`max_prepared_statements` above 0) or not (0).
  * Untracked, a name belongs to the server connection that parsed it: clients fail with 42P05 (already exists) and 26000
  * (does not exist), and clients that share a name run each other's SQL. This is the pinned known issue of the catalogue
- * row `named-statements-untracked`; the hang of report M2b was measured with another client and is not reproduced.
+ * row `named-statements-untracked`; the hang of report M2b needs another client (`@effect/sql-pg`) and is pinned by packages/effect/test/knownIssues.test.ts.
  */
 const namedStatementProbe = (
   id: string,

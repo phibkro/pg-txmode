@@ -32,6 +32,9 @@ jobs:
       - name: Vite+ checks
         shell: bash
         run: devenv shell -- bun run check
+      - name: Effect diagnostics
+        shell: bash
+        run: devenv shell -- bun run check:effect
       - name: Exception registry
         shell: bash
         run: devenv shell -- bun run check:exceptions

@@ -68,6 +68,20 @@ const meeting = Effect.gen(function* () {
 
 const noDelay = { baseDelayMs: 0, maxDelayMs: 0 };
 
+/** `effect`, and how many times it started. */
+const counted = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+  const runs = { count: 0 };
+
+  return {
+    effect: Effect.suspend(() => {
+      runs.count += 1;
+
+      return effect;
+    }),
+    runs,
+  };
+};
+
 const hyperdrive = (allowUnverified: boolean) =>
   Layer.unwrap(
     Effect.map(Servers, (servers) =>
@@ -130,20 +144,13 @@ layer(tables, { excludeTestServices: true, timeout: "90 seconds" })(
           Effect.gen(function* () {
             const tx = yield* TxClient;
             const sql = yield* SqlClient.SqlClient;
-            let runs = 0;
+            const slow = counted(sql`select pg_sleep(5)`);
 
             const error = yield* Effect.flip(
-              tx.transaction(
-                Effect.suspend(() => {
-                  runs += 1;
-
-                  return sql`select pg_sleep(5)`;
-                }),
-                { timeouts: { statementMs: 100 } }
-              )
+              tx.transaction(slow.effect, { timeouts: { statementMs: 100 } })
             );
 
-            assert.strictEqual(runs, 1);
+            assert.strictEqual(slow.runs.count, 1);
             assert.instanceOf(error, SqlError);
             assert.strictEqual(error.reason._tag, "StatementTimeoutError");
           })
@@ -247,22 +254,18 @@ layer(tables, { excludeTestServices: true, timeout: "90 seconds" })(
           Effect.gen(function* () {
             const tx = yield* TxClient;
             const sql = yield* SqlClient.SqlClient;
-            let runs = 0;
 
-            const error = yield* Effect.flip(
-              tx.transaction(
-                Effect.suspend(() => {
-                  runs += 1;
-
-                  return sql`do $$ begin raise exception 'again' using errcode = '40001'; end $$`;
-                }),
-                {
-                  retry: { ...noDelay, maxAttempts: 3, retryDeadlocks: true },
-                }
-              )
+            const failing = counted(
+              sql`do $$ begin raise exception 'again' using errcode = '40001'; end $$`
             );
 
-            assert.strictEqual(runs, 3);
+            const error = yield* Effect.flip(
+              tx.transaction(failing.effect, {
+                retry: { ...noDelay, maxAttempts: 3, retryDeadlocks: true },
+              })
+            );
+
+            assert.strictEqual(failing.runs.count, 3);
             assert.instanceOf(error, SqlError);
             assert.strictEqual(error.reason._tag, "SerializationError");
           })

@@ -1,9 +1,9 @@
 // Provenance: adapted from reebeat/studio @ d4fd75eaca83b9e8a98f073d5b1d957da5d6b8b8 (vite.config.ts), which adapted it
 // from reebeat/reebeat @ f7c348877585f54b6bf00651608726dd7e5044d3 and phibkro/vektorprogrammet-reimagined
-// @ 797e9e41d96194b9479ff224ac1c40bbc0545888. Deviations: the Effect rules (`@effect/tsgo` presets, the Oxlint Effect plugin)
-// apply to `packages/effect/**` only, because the core and the other packages must not depend on Effect (spec 0003 adds
-// the group; the plugin and presets are used as in reebeat @ 82ee66f `vite.config.ts`). See PROVENANCE.md.
-import { effectNative, strict } from "@effect/tsgo/oxlint-presets";
+// @ 797e9e41d96194b9479ff224ac1c40bbc0545888. Deviations: the Oxlint Effect plugin's rules apply to `packages/effect/**`
+// only, because the core and the other packages must not depend on Effect (spec 0003 adds the group, as reebeat @ 82ee66f
+// `vite.config.ts` does for its packages). The Effect language-service diagnostics run in `bun run check:effect`, not here:
+// `vp check` does not run the `effecttsgo/*` rules (spec 0003, Revisions). See PROVENANCE.md.
 import { effect } from "@phibkro/oxlint-effect-plugin";
 import type { EffectConfigInput } from "@phibkro/oxlint-effect-plugin";
 import ultraciteFmt from "ultracite/oxfmt";
@@ -79,16 +79,14 @@ export default defineConfig({
     overrides: [
       ...effectConfigResult.overrides,
       {
-        // Every `@effect/tsgo` preset rule, for the Effect adapter only. `func-names` asks a name for the generator that
-        // `Effect.gen(function* () {})` requires to be anonymous. `promise-function-async` makes a function that returns a
-        // promise async, and `effecttsgo/async-function` (on) forbids every async function; the Effect rule stays. The
-        // test scripts that run a hung client (`m2bClient.ts`, `finalizerClient.ts`) are the only entry points.
-        // `unicorn/no-array-method-this-argument` misreads Effect's data-first `Arr.every(xs, fn)` as a native
-        // `.every(fn, thisArg)` (the same contradiction with `effecttsgo/prefer-effect-array` as in reebeat).
+        // For the Effect adapter only. `func-names` asks a name for the generator that `Effect.gen(function* () {})`
+        // requires to be anonymous. `promise-function-async` makes a function that returns a promise async, and the
+        // language-service diagnostic `asyncFunction` (an error in `tsconfig.json`) forbids every async function; the
+        // Effect rule stays. `unicorn/no-array-method-this-argument` misreads Effect's data-first `Arr.every(xs, fn)` as a
+        // native `.every(fn, thisArg)` (the diagnostic `preferEffectArray` asks for the data-first form; reebeat switches it
+        // off for the same reason).
         files: ["packages/effect/**"],
         rules: {
-          ...effectNative.rules,
-          ...strict.rules,
           "eslint/func-names": "off",
           "typescript/promise-function-async": "off",
           "unicorn/no-array-method-this-argument": "off",

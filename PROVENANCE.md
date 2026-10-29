@@ -15,8 +15,8 @@ The development lifecycle (spec 0000) is copied from [`reebeat/studio`](https://
 | `.agents/skills/verify-pg-txmode/scripts/lib.sh` | `.agents/skills/verify-studio/scripts/lib.sh` | reduced to `TREE`, `EVIDENCE_ROOT`, `die` and `in_devenv`; evidence root `~/.local/state/pg-txmode-verify` |
 | `.agents/skills/verify-pg-txmode/SKILL.md` | `.agents/skills/verify-studio/SKILL.md` (shape only) | new text: headroom, gates, path table, cleanup |
 | `.github/workflows/checks.yml` | same path | identical commands and pins; two step names changed (no Effect, no editor here); one step added (`README table`, `check:docs`); the header is new |
-| `package.json` | same path | name, workspaces (`packages/*`, `tools/*`), scripts (`check:exceptions` runs `checkExceptions.ts`; `prepare` without the Effect patch), `catalog` cut to what this repository uses (no Effect, Foldkit, Tailwind) |
-| `vite.config.ts` | same path | no Effect, Foldkit or vendored anti-slop Effect rules; restricted-import patterns renamed `@pg-txmode/` |
+| `package.json` | same path | name, workspaces (`packages/*`, `tools/*`), scripts (`check:exceptions` runs `checkExceptions.ts`), `catalog` cut to what this repository uses (no Foldkit, Tailwind); since spec 0003 `prepare` runs `effect-tsgo patch --typescript --oxlint` (as reebeat's does) and the catalog lists the Effect packages of `packages/effect` |
+| `vite.config.ts` | same path | no Foldkit or vendored anti-slop Effect rules; restricted-import patterns renamed `@pg-txmode/`; since spec 0003 the `@effect/tsgo` presets and the Oxlint Effect plugin, scoped to `packages/effect/**` (reebeat's `vite.config.ts` @ `82ee66f`, one group instead of its package list) |
 | `tsconfig.json` | same path | no Effect language-service plugin; `include` lists the root files and `tools/`; `target` and `lib` `es2024` added in spec 0001 (`Promise.withResolvers`) |
 | `tools/quality/tsconfig.json`, `tools/quality/vite.config.ts` | same paths | identical |
 | `.gitleaks.toml` | same path | the title |
@@ -44,6 +44,17 @@ The development lifecycle (spec 0000) is copied from [`reebeat/studio`](https://
 | `oxc-parser` 0.153.0 | MIT | `sql` tagged templates of the lint; the exception registry check |
 | `pg` (node-postgres) 8.23.1 | MIT | the harness's driver (a development tool; the core does not import it) |
 | `zod` 4.6.7 | MIT | the shape of the registry and of the statement log |
+
+## Third-party packages used by spec 0003 (installed, not copied)
+
+| Package | Licence | Used for |
+| --- | --- | --- |
+| `effect` 4.1.0, `@effect/sql-pg` 4.1.0 (`Effect-TS/effect`) | MIT | the Effect adapter's runtime dependencies (`packages/effect`); no other package depends on them |
+| `@effect/vitest` 4.1.0, `@effect/platform-node` 4.1.0 | MIT | the adapter's tests (`it.effect`, `layer`; the child-process layer that runs a hung client in a process of its own) |
+| `@effect/tsgo` 0.63.0 | MIT | the Effect language-service diagnostics and the Oxlint `effecttsgo/*` rules, for `packages/effect` only; the one Effect package the repository root may list |
+| `@phibkro/oxlint-effect-plugin` 0.2.0 | MIT | the Oxlint Effect rules (roles per path), for `packages/effect` only |
+
+`packages/effect/tsconfig.json` carries reebeat's list of Effect language-service diagnostics (all at `error`, `reebeat/reebeat` @ `82ee66f` `tsconfig.json`) with its own `allowedUnstableApis`: the modules the adapter uses, which spec 0003 names.
 
 Not copied from studio: `apps/editor`, `tools/oxlint/anti-slop/**`, `tools/quality/effectFamily.ts`, `diagnosticRules.ts`, `featureMap.ts`, `foldkitLint.ts` and their tests, `docs/design`, `STATE.md` (rewritten), the `verify-studio` launch, doctor, cleanup and page scripts.
 

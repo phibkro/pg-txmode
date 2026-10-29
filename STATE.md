@@ -4,12 +4,12 @@ Lifecycle: build
 
 Now:
 
-pg-txmode is a library for safe PostgreSQL through transaction-pooling proxies (Hyperdrive first). Spec 0000 (development lifecycle and scaffold) and spec 0001 (the core: catalogue, connection mode, safe SQL constructs, harness, SQL lint) are in review, stacked; spec 0002 (the `pg` adapter) is stacked on 0001.
+pg-txmode is a library for safe PostgreSQL through transaction-pooling proxies (Hyperdrive first). Specs 0000 (development lifecycle and scaffold), 0001 (the core: catalogue, connection mode, safe SQL constructs, harness, SQL lint) and 0002 (the `pg` adapter) are merged. Spec 0003 (`packages/effect`, the Effect adapter on `@effect/sql-pg`) is in review.
 
 Next:
 
-- Review spec 0000, then merge it with `merge.sh` once a round passes; retarget the stacked PR of spec 0001 to `main`, and so on up the stack.
-- Later specs (README roadmap, planned only): postgres.js; `@effect/sql-pg` with Drizzle `effect-postgres` and `SqlModel` (the only package that may depend on Effect; it also reproduces the M2b hang); the deployed Hyperdrive probe Worker.
+- Review spec 0003 and merge it with `merge.sh` once a round passes.
+- Later specs (README roadmap, planned only): postgres.js; Drizzle `effect-postgres` and `SqlModel` on the Effect adapter; the deployed Hyperdrive probe Worker.
 
 Blocked:
 

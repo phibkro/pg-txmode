@@ -25,9 +25,11 @@
       "entry": [
         "test/**/*.test.ts",
         "test/m2bClient.ts",
-        "test/finalizerClient.ts"
+        "test/finalizerClient.ts",
+        "scripts/designs.ts"
       ],
-      "project": ["src/**/*.ts", "test/**/*.ts"]
+      "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@effect/language-service"]
     }
   },
   "ignoreBinaries": ["gitleaks"],

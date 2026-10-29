@@ -26,24 +26,33 @@ import { makeTxClient, TxClient } from "./txClient.ts";
 /** What a layer fails with at construction: the driver's `SqlError`, or the mode's refusal of the configuration. */
 export type LayerError = SqlError | ModeRefusedError;
 
-const pooledLayer = (
-  mode: TransactionPooledMode,
-  config: TxPgConfig
-): Layer.Layer<TxClient | SqlClient.SqlClient, LayerError> =>
-  Layer.effectContext(
-    Effect.gen(function* () {
-      const client = yield* makePgClient(mode, config);
+/**
+ * The client of `mode` and the services every mode has. Only `SqlClient` is provided, never `PgClient`: it also has `listen`
+ * and `notify`, which a pooled mode must not offer.
+ */
+const built = (mode: ConnectionMode, config: TxPgConfig) =>
+  Effect.gen(function* () {
+    const client = yield* makePgClient(mode, config);
 
-      // Only `SqlClient` is provided: `PgClient` also has `listen` and `notify`, which a pooled mode must not offer.
-      return Context.make(SqlClient.SqlClient, client).pipe(
+    return {
+      client,
+      context: Context.make(SqlClient.SqlClient, client).pipe(
         Context.add(
           TxClient,
           makeTxClient(mode, client, {
             allowUnverified: config.allowUnverified,
           })
         )
-      );
-    })
+      ),
+    };
+  });
+
+const pooledLayer = (
+  mode: TransactionPooledMode,
+  config: TxPgConfig
+): Layer.Layer<TxClient | SqlClient.SqlClient, LayerError> =>
+  Layer.effectContext(
+    Effect.map(built(mode, config), ({ context }) => context)
   ).pipe(Layer.provide(Reactivity.layer));
 
 const sessionLayer = (
@@ -51,19 +60,9 @@ const sessionLayer = (
   config: TxPgConfig
 ): Layer.Layer<TxClient | SqlClient.SqlClient | TxSession, LayerError> =>
   Layer.effectContext(
-    Effect.gen(function* () {
-      const client = yield* makePgClient(mode, config);
-
-      return Context.make(SqlClient.SqlClient, client).pipe(
-        Context.add(
-          TxClient,
-          makeTxClient(mode, client, {
-            allowUnverified: config.allowUnverified,
-          })
-        ),
-        Context.add(TxSession, makeTxSession(client))
-      );
-    })
+    Effect.map(built(mode, config), ({ client, context }) =>
+      Context.add(context, TxSession, makeTxSession(client))
+    )
   ).pipe(Layer.provide(Reactivity.layer));
 
 /**

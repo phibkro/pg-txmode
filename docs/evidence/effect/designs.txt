@@ -1,0 +1,38 @@
+Spec 0003, evidence: the design probes, raw.
+
+Command:   devenv shell -- bun run probes:effect        (script: packages/effect/scripts/designs.ts; the workload is packages/effect/test/m2bClient.ts)
+Date:      2026-10-29 (UTC), one machine
+Versions:  effect 4.1.0, @effect/sql-pg 4.1.0, pg 8.23.1 (the @pg-txmode/pg adapter), PostgreSQL 18.6, PgBouncer 1.25.2 (pool_mode=transaction, Neon's profile), Bun 1.4.2, Node 24.21.0
+Servers:   one PostgreSQL; two PgBouncers in front of it, default_pool_size=3, max_prepared_statements=1000 and 0
+
+Output of the final run (the script prints more lines, the devenv banner among them; these are its probe lines, verbatim):
+
+== interruption of a running transaction, behind PgBouncer (transaction mode)
+interrupt A (this package, @effect/sql-pg): running busy 1, committed 0; when interrupt returned busy 0, committed 0; 600 ms later busy 0, committed 0
+interrupt B (Effect over @pg-txmode/pg, node-postgres): running busy 1, committed 0; when interrupt returned busy 1, committed 0; 600 ms later busy 0, committed 0
+== M2b: 800 transactions, eight at a time, three server connections
+M2b PgClient, prepare: true, max_prepared_statements=0: 20 of 800 committed, HUNG (killed after 60 s), 62031 ms
+M2b pgBouncerLayer, max_prepared_statements=0: 800 of 800 committed, finished, 656 ms
+M2b PgClient, prepare: true, max_prepared_statements=1000: 800 of 800 committed, finished, 609 ms
+M2b pgBouncerLayer, max_prepared_statements=1000: 800 of 800 committed, finished, 607 ms
+
+Earlier runs of the same script on the same machine (before two lint fixes to the script; the probe code was the same):
+  run 1: PgClient, prepare: true, max_prepared_statements=0: 6 of 800 committed, HUNG (killed after 60 s), 62026 ms
+  run 2: PgClient, prepare: true, max_prepared_statements=0: 17 of 800 committed, HUNG (killed after 60 s), 62034 ms
+  the other three M2b lines and both interruption lines read the same in every run (800 of 800 finished; A: busy 0 on return; B: busy 1 on return, 0 after 600 ms).
+
+Reading:
+
+- A transaction (an insert, then `pg_sleep(30)`) is interrupted once the observer, a separate client on PostgreSQL itself, sees
+  the statement running. With design A no backend is busy when `Fiber.interrupt` returns: the interrupt waits for the cancel and
+  the rollback. With design B (an Effect around the pg adapter, abort by `AbortSignal`) the backend is still busy when the
+  interrupt returns and is gone 600 ms later: the interrupt returned before the transaction was over.
+- M2b: the plain PgClient with its default `prepare: true` behind `max_prepared_statements = 0` committed 6, 17 and 20 of 800
+  and then hung until it was killed: the number that commit before the hang varies from run to run, the hang does not (the
+  research report measured 798 of 800 and a hang on 4.0.6). The layer for `pgBouncer(0)` sends no named statement and
+  completes. Behind `max_prepared_statements = 1000` both complete.
+
+Scratch runs before the script existed (same machine, same versions, scripts not kept): the plain PgClient with `prepare: true`
+behind max_prepared_statements=0 committed 15 of 800 (798 had ended and 783 of those with "PgConnection: Query failed"; a
+60-transaction run showed the cause of the failures: SQLSTATE 26000, "prepared statement ... does not exist"), and committed
+800 of 800 with prepare false (0) and with 1000 for either setting.

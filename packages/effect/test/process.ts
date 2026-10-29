@@ -16,7 +16,7 @@ export interface Outcome {
 export const runScript = (
   file: string,
   env: Readonly<Record<string, string>>,
-  deadline: "10 seconds" | "20 seconds"
+  deadline: "10 seconds" | "20 seconds" | "60 seconds"
 ): Effect.Effect<Outcome, never, ChildProcessSpawner.ChildProcessSpawner> =>
   Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
