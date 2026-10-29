@@ -55,8 +55,8 @@ const finalizer = (client: "make" | "layer" | "txmode") =>
  *
  * `PgClient` with its default `prepare: true` behind PgBouncer with `max_prepared_statements = 0` loses its named
  * statements: 26000 (the statement does not exist) fails transactions, and the last ones never complete (800 transactions,
- * eight at a time, three server connections: 15 of 800 completed and the run hung with two outstanding; the research report
- * measured the same on 4.0.6). This package's layer derives `prepare` from the mode, so the same workload completes there.
+ * eight at a time, three server connections: `docs/evidence/effect/designs.txt` has the raw runs; the research report measured
+ * the same on 4.0.6; reported upstream as Effect-TS/effect#10151). This package's layer derives `prepare` from the mode, so the same workload completes there.
  * The workload runs in a process of its own (`m2bClient.ts`).
  */
 layer(Layer.mergeAll(Servers.layer, processes), {
@@ -103,7 +103,10 @@ layer(Layer.mergeAll(Servers.layer, processes), {
  * Effect-TS/effect#10128: a finalizer that queries a pooled client built in its own scope hangs `Scope.close` once the pool
  * has retired its idle connection. It happens when the client is built with `PgClient.make` in the scope itself; a client
  * that a layer builds lives in a scope of the layer, which closes after the finalizers registered later, so the query
- * returns. This package only builds clients in layers, so it needs no workaround; the pin tells when to look again.
+ * returns. This package only builds clients in layers, so it needs no workaround.
+ *
+ * Fixed upstream on Effect main in PR #10129 (the pool runs in a child scope); not in 4.1.0. Flip this pin (the `make` run
+ * then closes) when the fixed `effect` version is the minimum peer of this package.
  */
 layer(Layer.mergeAll(Servers.layer, processes), {
   excludeTestServices: true,

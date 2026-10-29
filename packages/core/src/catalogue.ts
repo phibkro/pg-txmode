@@ -199,7 +199,7 @@ export const catalogue = [
     ],
     transactionPooled: probed(
       "breaks",
-      "Known issue, pinned: a statement name is bound to one server connection, so clients fail with 42P05 (already exists; 26000, does not exist, in some runs) and clients that share a name get each other's SQL. The hang measured with @effect/sql-pg 4.0.6 (report M2b, 4 of 4 runs) needs that client and reproduces on 4.1.0 (PgClient with prepare: true: 6 to 20 of 800 transactions committed, then a hang; docs/evidence/effect/designs.txt, packages/effect/test/knownIssues.test.ts); node-postgres fails loudly instead."
+      "Known issue, pinned: a statement name is bound to one server connection, so clients fail with 42P05 (already exists; 26000, does not exist, in some runs) and clients that share a name get each other's SQL. The hang measured with @effect/sql-pg 4.0.6 (report M2b, 4 of 4 runs) needs that client and reproduces on 4.1.0 (PgClient with prepare: true: a hang after a few of 800 transactions, raw runs in docs/evidence/effect/designs.txt; pinned in packages/effect/test/knownIssues.test.ts; Effect-TS/effect#10151); node-postgres fails loudly instead."
     ),
   },
   {

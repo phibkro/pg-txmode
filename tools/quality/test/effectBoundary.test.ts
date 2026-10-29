@@ -33,8 +33,8 @@ const effectDependencies = (source: string): readonly string[] => {
 };
 
 /**
- * The one Effect package that the repository root may list: `@effect/tsgo`, the checker that `vp check` and the `prepare`
- * script run over the adapter (its language-service diagnostics and lint presets). It is tooling, not a dependency of
+ * The one Effect package that the repository root may list: `@effect/tsgo`, the checker that `check:effect` runs over
+ * the adapter (`effect-tsgo tsc`: its language-service diagnostics). It is tooling, not a dependency of
  * any package's code, and it is named here so that nothing else slips in beside it.
  */
 const rootTooling = "@effect/tsgo";

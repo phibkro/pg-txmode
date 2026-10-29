@@ -1,4 +1,4 @@
-export type { TxPgConfig } from "./client.ts";
+export type { SessionPgConfig, TxPgConfig } from "./client.ts";
 
 export {
   AdvisoryLockLostError,

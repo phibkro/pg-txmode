@@ -10,11 +10,13 @@ import { AdvisoryLockLostError } from "./errors.ts";
  * transaction-pooled layer does not, so a program that needs it has an unsatisfied requirement and does not compile
  * against any transaction-pooled layer (the core's `SessionApi`, as a requirement).
  *
- * Contract. `listen` holds a connection until the scope closes and returns the notification queue; a connection that
- * fails ends the queue with the driver's `SqlError`. `withAdvisoryLock(key, body)` takes `pg_advisory_lock(key)` on a
- * connection of its own, runs `body` on the client's pool, and releases the lock when `body` ends, fails or is
- * interrupted; when the lock's connection ends first, `body` is interrupted and the call fails with
- * `AdvisoryLockLostError`.
+ * Contract. Both methods hold a connection of the session pool (`SessionPgConfig.sessionConnections`, default 2), which is a
+ * pool of its own: a body that runs under a lock uses the main pool, so locks never take connections from it. A call beyond
+ * the session pool waits for `acquireTimeout` (10 seconds unless the config sets it) and fails with the driver's `SqlError`.
+ * `listen` holds its connection until the scope closes and returns the notification queue; a connection that fails ends
+ * the queue with the driver's `SqlError`. `withAdvisoryLock(key, body)` takes `pg_advisory_lock(key)` on a session
+ * connection, runs `body`, and releases the lock when `body` ends, fails or is interrupted; when the lock's connection ends
+ * first, `body` is interrupted and the call fails with `AdvisoryLockLostError`.
  */
 export class TxSession extends Context.Service<
   TxSession,
@@ -39,6 +41,7 @@ const unlockSql = "select pg_advisory_unlock($1::bigint)";
 /** Parks the lock's connection: it is answered only when the connection ends or the watch is interrupted. */
 const parkSql = "select pg_sleep(86400)";
 
+/** The session services over `client`, whose pool holds nothing but sessions (see `TxSession`). */
 export const makeTxSession = (
   client: PgClient.PgClient
 ): TxSession["Service"] =>

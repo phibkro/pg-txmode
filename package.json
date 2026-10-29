@@ -8,10 +8,10 @@
   ],
   "type": "module",
   "scripts": {
-    "prepare": "vp config --no-agent && effect-tsgo patch --typescript --oxlint",
+    "prepare": "vp config --no-agent",
     "ready": "bun run check && bun run check:effect && bun run check:exceptions && bun run check:docs && bun run test && bun run build && bun run knip && bun run cpd && bun run secrets",
     "check": "vp check",
-    "check:effect": "tsc -p packages/effect",
+    "check:effect": "effect-tsgo tsc -p packages/effect",
     "test": "vp run -r --no-cache test",
     "build": "vp run -r --no-cache build",
     "check:exceptions": "bun tools/quality/checkExceptions.ts",

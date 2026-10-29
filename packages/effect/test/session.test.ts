@@ -51,6 +51,20 @@ const untilHeld = (key: number) =>
     until: (pid) => pid !== undefined,
   });
 
+const small = (options: {
+  readonly maxConnections: number;
+  readonly sessionConnections: number;
+}) =>
+  Layer.unwrap(
+    Effect.map(Servers, (servers) =>
+      directLayer({
+        ...options,
+        acquireTimeout: "500 millis",
+        url: Redacted.make(servers.postgres.endpoint.url),
+      })
+    )
+  );
+
 layer(fixture, { excludeTestServices: true, timeout: "90 seconds" })(
   "session",
   (suite) => {
@@ -129,6 +143,62 @@ layer(fixture, { excludeTestServices: true, timeout: "90 seconds" })(
 
             assert.instanceOf(error, AdvisoryLockLostError);
             assert.strictEqual(error.key, 9);
+          })
+      );
+    });
+
+    // The body of a lock runs on the main pool, which has one connection; the lock sits on the session pool.
+    suite.layer(small({ maxConnections: 1, sessionConnections: 2 }), {
+      buildPerTest: true,
+    })((it) => {
+      it.effect(
+        "a body that queries still has the main pool, even when it is one connection and the lock is held",
+        () =>
+          Effect.gen(function* () {
+            const session = yield* TxSession;
+            const sql = yield* SqlClient.SqlClient;
+
+            const rows = yield* session.withAdvisoryLock(
+              21,
+              sql`select 1 as one`
+            );
+
+            assert.strictEqual(rows[0]?.one, 1);
+          })
+      );
+
+      it.effect(
+        "more locks than the session pool fail with a typed SqlError after acquireTimeout, and free locks stay usable",
+        () =>
+          Effect.gen(function* () {
+            const session = yield* TxSession;
+
+            const holders = [
+              yield* Effect.forkChild(
+                session.withAdvisoryLock(22, Effect.never)
+              ),
+              yield* Effect.forkChild(
+                session.withAdvisoryLock(23, Effect.never)
+              ),
+            ];
+
+            yield* untilHeld(22);
+            yield* untilHeld(23);
+
+            const refused = yield* Effect.flip(
+              session.withAdvisoryLock(24, Effect.void)
+            );
+
+            assert.strictEqual(refused._tag, "SqlError");
+            assert.isTrue(yield* tryLock(24));
+
+            yield* Effect.forEach(holders, Fiber.interrupt, {
+              discard: true,
+            });
+            assert.strictEqual(
+              yield* session.withAdvisoryLock(25, Effect.succeed("again")),
+              "again"
+            );
           })
       );
     });

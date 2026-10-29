@@ -29,6 +29,19 @@ export interface TxPgConfig extends Omit<
   readonly allowUnverified?: boolean;
 }
 
+/**
+ * What `directLayer` and `sessionPooledLayer` add: the connections that hold a session (a `listen` and the lock of
+ * `withAdvisoryLock`) come from a pool of their own, so a body that runs under a lock still has the main pool.
+ */
+export interface SessionPgConfig extends TxPgConfig {
+  /**
+   * Connections of the session pool: at most this many `listen` calls and `withAdvisoryLock` bodies at a time. Defaults to 2.
+   * A call beyond it waits for a connection for `acquireTimeout` (10 seconds when the config has none) and then fails with
+   * the driver's `SqlError`; it never waits for ever.
+   */
+  readonly sessionConnections?: number;
+}
+
 /** A Worker invocation can hold six simultaneous outgoing connections; the pool stays below that (spec 0002). */
 const defaultMaxConnections = 5;
 
