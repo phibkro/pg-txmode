@@ -9,8 +9,9 @@
   "type": "module",
   "scripts": {
     "prepare": "vp config --no-agent",
-    "ready": "bun run check && bun run check:exceptions && bun run check:docs && bun run test && bun run build && bun run knip && bun run cpd && bun run secrets",
+    "ready": "bun run check && bun run check:effect && bun run check:exceptions && bun run check:docs && bun run test && bun run build && bun run knip && bun run cpd && bun run secrets",
     "check": "vp check",
+    "check:effect": "effect-tsgo tsc -p packages/effect",
     "test": "vp run -r --no-cache test",
     "build": "vp run -r --no-cache build",
     "check:exceptions": "bun tools/quality/checkExceptions.ts",
@@ -21,11 +22,14 @@
     "knip": "knip",
     "cpd": "jscpd --config .jscpd.json .",
     "secrets": "gitleaks git --config .gitleaks.toml --redact",
-    "commitlint": "commitlint"
+    "commitlint": "commitlint",
+    "probes:effect": "bun packages/effect/scripts/designs.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
+    "@effect/tsgo": "catalog:",
+    "@phibkro/oxlint-effect-plugin": "0.2.0",
     "jscpd": "5.4.1",
     "knip": "6.41.0",
     "oxlint-plugin-complexity": "4.0.0",
@@ -56,6 +60,11 @@
     "pg": "8.23.1",
     "@types/pg": "8.23.1",
     "libpg-query": "18.2.1",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "effect": "4.1.0",
+    "@effect/sql-pg": "4.1.0",
+    "@effect/vitest": "4.1.0",
+    "@effect/tsgo": "0.63.0",
+    "@effect/platform-node": "4.1.0"
   }
 }

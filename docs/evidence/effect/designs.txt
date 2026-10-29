@@ -1,0 +1,64 @@
+Spec 0003, evidence: the design probes, raw (rewritten after review round 1: only output held verbatim below is quoted).
+
+Command:   devenv shell -- bun run probes:effect        (script: packages/effect/scripts/designs.ts; the workload is packages/effect/test/m2bClient.ts)
+Date:      2026-10-29 (UTC), one machine, head of the PR at round 1 plus the round-1 fixes
+Versions:  effect 4.1.0, @effect/sql-pg 4.1.0, pg 8.23.1 (the @pg-txmode/pg adapter), PostgreSQL 18.6, PgBouncer 1.25.2 (pool_mode=transaction, Neon's profile), Bun 1.4.2, Node 24.21.0
+Servers:   one PostgreSQL; two PgBouncers in front of it, default_pool_size=3, max_prepared_statements=1000 and 0
+
+Reading:
+- A transaction (an insert, then `pg_sleep(30)`) is interrupted once the observer, a separate client on PostgreSQL itself, sees
+  the statement running. Design A (this package): no backend busy when `Fiber.interrupt` returns (3 runs of 3). Design B (a naive
+  `Effect.promise` wrapper over the pg adapter, abort by AbortSignal): the backend is still busy when the interrupt returns and
+  gone 600 ms later (3 of 3). A wrapper that awaits the settled promise uninterruptibly was not built or probed.
+- M2b: the plain PgClient with its default `prepare: true` behind `max_prepared_statements = 0` committed 17, 21 and 11 of 800
+  and then hung until it was killed: the count before the hang varies, the hang does not. The layer for `pgBouncer(0)` sends no
+  named statement and committed 800 of 800 each time. Behind `max_prepared_statements = 1000` both complete. The research
+  report measured 798 of 800 and a hang on 4.0.6 (its own measurement, not repeated here).
+- Design B's M2b cell was not probed.
+
+Full output of three runs follows (the devenv banner lines are part of it).
+
+===== run 1 =====
+• Running devenv:files:cleanup
+✓ Running devenv:files:cleanup in 12.2ms
+• Running devenv:enterShell
+✓ Running devenv:enterShell in 15.4ms
+$ bun packages/effect/scripts/designs.ts
+== interruption of a running transaction, behind PgBouncer (transaction mode)
+interrupt A (this package, @effect/sql-pg): running busy 1, committed 0; when interrupt returned busy 0, committed 0; 600 ms later busy 0, committed 0
+interrupt B (Effect over @pg-txmode/pg, node-postgres): running busy 1, committed 0; when interrupt returned busy 1, committed 0; 600 ms later busy 0, committed 0
+== M2b: 800 transactions, eight at a time, three server connections
+M2b PgClient, prepare: true, max_prepared_statements=0: 17 of 800 committed, HUNG (killed after 60 s), 62024 ms
+M2b pgBouncerLayer, max_prepared_statements=0: 800 of 800 committed, finished, 653 ms
+M2b PgClient, prepare: true, max_prepared_statements=1000: 800 of 800 committed, finished, 706 ms
+M2b pgBouncerLayer, max_prepared_statements=1000: 800 of 800 committed, finished, 638 ms
+
+===== run 2 =====
+• Running devenv:files:cleanup
+✓ Running devenv:files:cleanup in 16.7ms
+• Running devenv:enterShell
+✓ Running devenv:enterShell in 13.5ms
+$ bun packages/effect/scripts/designs.ts
+== interruption of a running transaction, behind PgBouncer (transaction mode)
+interrupt A (this package, @effect/sql-pg): running busy 1, committed 0; when interrupt returned busy 0, committed 0; 600 ms later busy 0, committed 0
+interrupt B (Effect over @pg-txmode/pg, node-postgres): running busy 1, committed 0; when interrupt returned busy 1, committed 0; 600 ms later busy 0, committed 0
+== M2b: 800 transactions, eight at a time, three server connections
+M2b PgClient, prepare: true, max_prepared_statements=0: 21 of 800 committed, HUNG (killed after 60 s), 62039 ms
+M2b pgBouncerLayer, max_prepared_statements=0: 800 of 800 committed, finished, 1017 ms
+M2b PgClient, prepare: true, max_prepared_statements=1000: 800 of 800 committed, finished, 1137 ms
+M2b pgBouncerLayer, max_prepared_statements=1000: 800 of 800 committed, finished, 1482 ms
+
+===== run 3 =====
+• Running devenv:files:cleanup
+✓ Running devenv:files:cleanup in 14.7ms
+• Running devenv:enterShell
+✓ Running devenv:enterShell in 13.9ms
+$ bun packages/effect/scripts/designs.ts
+== interruption of a running transaction, behind PgBouncer (transaction mode)
+interrupt A (this package, @effect/sql-pg): running busy 1, committed 0; when interrupt returned busy 0, committed 0; 600 ms later busy 0, committed 0
+interrupt B (Effect over @pg-txmode/pg, node-postgres): running busy 1, committed 0; when interrupt returned busy 1, committed 0; 600 ms later busy 0, committed 0
+== M2b: 800 transactions, eight at a time, three server connections
+M2b PgClient, prepare: true, max_prepared_statements=0: 11 of 800 committed, HUNG (killed after 60 s), 62037 ms
+M2b pgBouncerLayer, max_prepared_statements=0: 800 of 800 committed, finished, 1088 ms
+M2b PgClient, prepare: true, max_prepared_statements=1000: 800 of 800 committed, finished, 882 ms
+M2b pgBouncerLayer, max_prepared_statements=1000: 800 of 800 committed, finished, 726 ms
