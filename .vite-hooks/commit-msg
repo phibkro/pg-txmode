@@ -1,0 +1,8 @@
+#!/bin/sh
+# Provenance: copied from phibkro/vektorprogrammet-reimagined @ 797e9e41d96194b9479ff224ac1c40bbc0545888 (.vite-hooks/commit-msg), unchanged.
+# commitlint runs with the repository's pinned Node/Bun toolchain inside devenv.
+set -eu
+if [ -z "${DEVENV_ROOT:-}" ]; then
+  exec devenv shell -- sh "$0" "$@"
+fi
+bun run commitlint --edit "$1"

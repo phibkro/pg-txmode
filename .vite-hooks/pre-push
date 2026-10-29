@@ -1,0 +1,8 @@
+#!/bin/sh
+# Provenance: adapted from phibkro/vektorprogrammet-reimagined @ 797e9e41d96194b9479ff224ac1c40bbc0545888 (.vite-hooks/pre-push).
+# Run the complete workspace test suite.
+set -eu
+if [ -z "${DEVENV_ROOT:-}" ]; then
+  exec devenv shell -- sh "$0" "$@"
+fi
+bun run test

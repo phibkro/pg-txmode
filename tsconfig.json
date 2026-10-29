@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "esModuleInterop": true,
+    "strict": true
+  },
+  "include": ["vite.config.ts", "commitlint.config.ts", "tools/**/*.ts"]
+}
