@@ -69,7 +69,9 @@ const rowLockProbe: Probe = {
           await seed?.query("INSERT INTO accounts VALUES (1, 1000)")
       );
 
-      const outcomes = await Promise.all(
+      // Each client reads the balance, thinks for 20 ms, then writes: without the row lock two clients read the same
+      // balance and the second write breaks the CHECK (balance >= 0).
+      const attempts = await Promise.allSettled(
         Array.from(
           { length: 20 },
           async () =>
@@ -82,12 +84,14 @@ const rowLockProbe: Probe = {
                       [1]
                     );
 
-                    const enough = Number(rows[0]?.balance) >= 100;
+                    const enough = Number(rows[0]?.balance) >= 300;
+
+                    await session.query("SELECT pg_sleep(0.02)");
 
                     if (enough) {
                       await session.query(
                         rowLock.statements.withdraw,
-                        [1, 100]
+                        [1, 300]
                       );
                     }
 
@@ -97,7 +101,13 @@ const rowLockProbe: Probe = {
         )
       );
 
-      const succeeded = outcomes.filter(Boolean).length;
+      const succeeded = attempts.filter(
+        (attempt) => attempt.status === "fulfilled" && attempt.value
+      ).length;
+
+      const refused = attempts.filter(
+        (attempt) => attempt.status === "rejected"
+      ).length;
 
       const balance = await withSessions(
         target.connect,
@@ -111,9 +121,11 @@ const rowLockProbe: Probe = {
               )
       );
 
-      const detail = `20 concurrent withdrawals of 100 from 1000: ${succeeded} succeeded, final balance ${balance}`;
+      const detail = `20 concurrent withdrawals of 300 from 1000: ${succeeded} succeeded, ${refused} failed, final balance ${balance}`;
 
-      return succeeded === 10 && balance === 0 ? works(detail) : breaks(detail);
+      return succeeded === 3 && refused === 0 && balance === 100
+        ? works(detail)
+        : breaks(detail);
     }),
 };
 

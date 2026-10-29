@@ -496,7 +496,7 @@ export const catalogue = [
     sources: [`${pgDocs}/explicit-locking.html#LOCKING-ROWS`],
     transactionPooled: probed(
       "works",
-      "20 concurrent withdrawals through a 2-connection pool kept the total exact."
+      "20 concurrent withdrawals of 300 from 1000 (each reads, thinks 20 ms, then writes) through a 2-connection pool: 3 succeeded, none failed, final balance 100."
     ),
   },
   {
