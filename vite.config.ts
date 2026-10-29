@@ -1,11 +1,53 @@
 // Provenance: adapted from reebeat/studio @ d4fd75eaca83b9e8a98f073d5b1d957da5d6b8b8 (vite.config.ts), which adapted it
 // from reebeat/reebeat @ f7c348877585f54b6bf00651608726dd7e5044d3 and phibkro/vektorprogrammet-reimagined
-// @ 797e9e41d96194b9479ff224ac1c40bbc0545888. Deviations: no Effect, Foldkit or anti-slop Effect rules (the core must not
-// depend on Effect; the Effect adapter package adds its own group in its spec). See PROVENANCE.md.
+// @ 797e9e41d96194b9479ff224ac1c40bbc0545888. Deviations: the Effect rules (`@effect/tsgo` presets, the Oxlint Effect plugin)
+// apply to `packages/effect/**` only, because the core and the other packages must not depend on Effect (spec 0003 adds
+// the group; the plugin and presets are used as in reebeat @ 82ee66f `vite.config.ts`). See PROVENANCE.md.
+import { effectNative, strict } from "@effect/tsgo/oxlint-presets";
+import { effect } from "@phibkro/oxlint-effect-plugin";
+import type { EffectConfigInput } from "@phibkro/oxlint-effect-plugin";
 import ultraciteFmt from "ultracite/oxfmt";
 import antiSlop from "ultracite/oxlint/anti-slop";
 import core from "ultracite/oxlint/core";
 import { defineConfig } from "vite-plus";
+
+// Effect roles per path. The Effect adapter is the only package that uses Effect.
+const effectConfig: EffectConfigInput = {
+  groups: [
+    {
+      files: ["packages/effect/src/**"],
+      platform: "node",
+      role: "effect-library",
+      strictness: "strict",
+    },
+    {
+      files: ["packages/effect/test/**"],
+      platform: "node",
+      role: "test",
+      strictness: "strict",
+    },
+    {
+      // The two scripts that a test runs in a process of its own (a hung client cannot be interrupted from inside).
+      files: [
+        "packages/effect/test/finalizerClient.ts",
+        "packages/effect/test/m2bClient.ts",
+      ],
+      platform: "node",
+      role: "composition-root",
+      strictness: "strict",
+    },
+    {
+      // The one test module that starts those scripts with Node's child-process layer.
+      adapterDependencies: ["@effect/platform-node"],
+      files: ["packages/effect/test/process.ts"],
+      platform: "node",
+      role: "runtime-adapter",
+      strictness: "strict",
+    },
+  ],
+};
+
+const effectConfigResult = effect(effectConfig);
 
 const restrictedSourcePatterns = [
   {
@@ -31,9 +73,39 @@ export default defineConfig({
     jsPlugins: [
       { name: "vite-plus", specifier: "vite-plus/oxlint-plugin" },
       { name: "complexity", specifier: "oxlint-plugin-complexity" },
+      ...effectConfigResult.jsPlugins,
     ],
     options: { typeAware: true, typeCheck: true },
     overrides: [
+      ...effectConfigResult.overrides,
+      {
+        // Every `@effect/tsgo` preset rule, for the Effect adapter only. `func-names` asks a name for the generator that
+        // `Effect.gen(function* () {})` requires to be anonymous. `promise-function-async` makes a function that returns a
+        // promise async, and `effecttsgo/async-function` (on) forbids every async function; the Effect rule stays. The
+        // test scripts that run a hung client (`m2bClient.ts`, `finalizerClient.ts`) are the only entry points.
+        // `unicorn/no-array-method-this-argument` misreads Effect's data-first `Arr.every(xs, fn)` as a native
+        // `.every(fn, thisArg)` (the same contradiction with `effecttsgo/prefer-effect-array` as in reebeat).
+        files: ["packages/effect/**"],
+        rules: {
+          ...effectNative.rules,
+          ...strict.rules,
+          "eslint/func-names": "off",
+          "typescript/promise-function-async": "off",
+          "unicorn/no-array-method-this-argument": "off",
+        },
+      },
+      {
+        // `Schema.TaggedError` class definitions read as throw sites to `throw-new-error`, and a closed set of errors (or the
+        // two services of the test fixture) reads as one table.
+        files: [
+          "packages/effect/src/errors.ts",
+          "packages/effect/test/stack.ts",
+        ],
+        rules: {
+          "eslint/max-classes-per-file": "off",
+          "unicorn/throw-new-error": "off",
+        },
+      },
       {
         // The harness and every test drive a server through sequential steps: each step waits for the one before it
         // (a transaction's statements, a probe's setup then its observation), and a step that fails is captured with

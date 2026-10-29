@@ -20,6 +20,14 @@
     "tools/quality": {
       "entry": ["checkExceptions.ts"],
       "project": ["*.ts", "test/**/*.ts"]
+    },
+    "packages/effect": {
+      "entry": [
+        "test/**/*.test.ts",
+        "test/m2bClient.ts",
+        "test/finalizerClient.ts"
+      ],
+      "project": ["src/**/*.ts", "test/**/*.ts"]
     }
   },
   "ignoreBinaries": ["gitleaks"],

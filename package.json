@@ -8,7 +8,7 @@
   ],
   "type": "module",
   "scripts": {
-    "prepare": "vp config --no-agent",
+    "prepare": "vp config --no-agent && effect-tsgo patch --typescript --oxlint",
     "ready": "bun run check && bun run check:exceptions && bun run check:docs && bun run test && bun run build && bun run knip && bun run cpd && bun run secrets",
     "check": "vp check",
     "test": "vp run -r --no-cache test",
@@ -26,6 +26,8 @@
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
+    "@effect/tsgo": "catalog:",
+    "@phibkro/oxlint-effect-plugin": "0.2.0",
     "jscpd": "5.4.1",
     "knip": "6.41.0",
     "oxlint-plugin-complexity": "4.0.0",
@@ -56,6 +58,11 @@
     "pg": "8.23.1",
     "@types/pg": "8.23.1",
     "libpg-query": "18.2.1",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "effect": "4.1.0",
+    "@effect/sql-pg": "4.1.0",
+    "@effect/vitest": "4.1.0",
+    "@effect/tsgo": "0.63.0",
+    "@effect/platform-node": "4.1.0"
   }
 }
