@@ -59,6 +59,7 @@ Each cell is `outcome (how it is known)`. `docs`: a primary source says so (the 
 | Savepoints (nested transactions) | works (docs) | works (pgbouncer-probe) | works (hyperdrive-probe) | [1](https://www.postgresql.org/docs/current/sql-savepoint.html) |
 | Row locks (SELECT ... FOR UPDATE) inside a transaction | works (docs) | works (pgbouncer-probe) | unknown (unverified) | [1](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS) |
 | FOR UPDATE SKIP LOCKED: a second worker skips the rows an open transaction holds | works (docs) | works (pgbouncer-probe) | unknown (unverified) | [1](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE) |
+| A lease-based claim (token, lease, attempts, fenced ack) that survives a worker that dies, one autocommit statement each | works (docs) | works (pgbouncer-probe) | unknown (unverified) | [1](https://www.postgresql.org/docs/current/sql-update.html) [2](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-READ-COMMITTED) |
 | INSERT ... ON CONFLICT ... RETURNING as a claim (through Hyperdrive, DO UPDATE upserts and a sequential DO NOTHING were observed; a concurrent DO NOTHING claim was not) | works (docs) | works (pgbouncer-probe) | works (hyperdrive-probe) | [1](https://www.postgresql.org/docs/current/sql-insert.html#SQL-ON-CONFLICT) |
 | SQLSTATE reaches the client, so a failure can be classified and retried (through Hyperdrive only 23505 was observed; 40001 and 40P01 were not) | works (docs) | works (pgbouncer-probe) | works (hyperdrive-probe) | [1](https://developers.cloudflare.com/hyperdrive/observability/troubleshooting/) [2](https://www.postgresql.org/docs/current/mvcc-serialization-failure-handling.html) |
 | A statement or an idle connection that runs for a long time | works (docs) | works (docs) | breaks (docs) | [1](https://developers.cloudflare.com/hyperdrive/platform/limits/) [2](https://www.pgbouncer.org/config.html#query_timeout) |
@@ -97,9 +98,10 @@ Planned only unless marked built.
 1. Spec 0000: development lifecycle and scaffold (built, in review).
 2. Spec 0001: the core, the harness and the lint (built, in review).
 3. Spec 0002: the `pg` (node-postgres) adapter (built, in review).
-4. postgres.js adapter: Cloudflare's page says `prepare: false` hangs there, the Supabase page says pipelining breaks; a probe settles which.
-5. Spec 0003: `@pg-txmode/effect`, a `SqlClient` and a transaction door for Effect, built on `@effect/sql-pg` and configured from the connection mode (built, in review). It is the only package that depends on Effect, and it reproduces and avoids the `@effect/sql-pg` hang of the research report (M2b). Drizzle `effect-postgres` and Effect `SqlModel` on top of it: planned.
-6. A deployed Hyperdrive probe Worker, the only source of Hyperdrive truth. It needs the operator's Cloudflare credentials, so the steps are a [wizard](docs/wizard/hyperdrive-probe.md), not a script anyone runs for them.
+4. Spec 0004: the outbox delivers at least once (lease, token, fenced ack; built, in review). Replaces the at-most-once relay of spec 0001.
+5. postgres.js adapter: Cloudflare's page says `prepare: false` hangs there, the Supabase page says pipelining breaks; a probe settles which.
+6. Spec 0003: `@pg-txmode/effect`, a `SqlClient` and a transaction door for Effect, built on `@effect/sql-pg` and configured from the connection mode (built, in review). It is the only package that depends on Effect, and it reproduces and avoids the `@effect/sql-pg` hang of the research report (M2b). Drizzle `effect-postgres` and Effect `SqlModel` on top of it: planned.
+7. A deployed Hyperdrive probe Worker, the only source of Hyperdrive truth. It needs the operator's Cloudflare credentials, so the steps are a [wizard](docs/wizard/hyperdrive-probe.md), not a script anyone runs for them.
 
 ## Licence
 

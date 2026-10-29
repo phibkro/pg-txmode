@@ -50,6 +50,7 @@ export {
   dropExampleSchema,
   exampleSchema,
   outbox,
+  outboxDelivery,
   patterns,
   rowLock,
   savepoint,
