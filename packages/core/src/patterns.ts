@@ -116,6 +116,7 @@ export const outbox: Pattern<"insertMessage" | "insertOrder"> = {
  * The fence relies on READ COMMITTED, PostgreSQL's default: a second claimer waits for the row lock and re-reads the row.
  * Under REPEATABLE READ the loser of a race gets a serialization failure (40001) instead of an empty result. The example
  * table is a test fixture: a real one wants the partial index `outbox_due` of `exampleSchema`, and deletes delivered rows.
+ * The index and `CHECK (attempts >= 0)` of the fixture are not exercised by any test; they are there to be copied.
  */
 export const outboxDelivery: Pattern<
   "ack" | "bury" | "claimBatch" | "claimById" | "release"
