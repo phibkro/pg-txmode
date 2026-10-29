@@ -15,13 +15,22 @@ declare module "pg" {
   }
 }
 
-const cancelKey = (client: PoolClient): CancelKey => ({
+/** What an abort needs of a pooled client. */
+export type Abortable = Pick<
+  PoolClient,
+  "host" | "port" | "processID" | "secretKey"
+> & {
+  readonly query: (text: string) => Promise<object>;
+  readonly connection: { readonly stream: { readonly destroy: () => void } };
+};
+
+const cancelKey = (client: Abortable): CancelKey => ({
   processId: client.processID,
   secretKey: client.secretKey,
 });
 
 /** How long each step of an abort (the cancel, then the `ROLLBACK`) may take before the socket is closed anyway. */
-const graceMs = 2000;
+const defaultGraceMs = 2000;
 
 const ignored = (): undefined => undefined;
 
@@ -48,9 +57,13 @@ const settleWithin = async (
  *    Hyperdrive (catalogue row `request-abort`), and it does not depend on the pooler noticing a closed socket;
  * 3. the socket is destroyed, which rolls an idle transaction back on a direct connection and behind PgBouncer.
  *
- * Each of the first two steps is given `graceMs`; an unreachable pooler cannot hold the close back for longer.
+ * Each of the first two steps is given `graceMs`; an unreachable pooler cannot hold the close back for longer. Only the
+ * parts of the client that this uses are named (`Abortable`), so a test can stand in for it.
  */
-export const cancelAndClose = async (client: PoolClient): Promise<void> => {
+export const cancelAndClose = async (
+  client: Abortable,
+  graceMs = defaultGraceMs
+): Promise<void> => {
   try {
     await settleWithin(sendCancelRequest(client, cancelKey(client)), graceMs);
     await settleWithin(client.query("ROLLBACK"), graceMs);

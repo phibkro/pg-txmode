@@ -65,7 +65,7 @@ describe("named prepared statements follow the mode", () => {
   });
 
   test("a Supavisor refusal quotes Supabase's cell and a PgBouncer one quotes PgBouncer's", async () => {
-    expect(await refusal(supavisor)).toMatch(/Supabase documents/u);
+    expect(await refusal(supavisor)).toMatch(/Supabase's shared pooler/u);
     expect(await refusal(pgBouncer(0))).not.toMatch(/Supabase/u);
   });
 
