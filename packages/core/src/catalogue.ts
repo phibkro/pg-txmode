@@ -404,15 +404,15 @@ export const catalogue = [
   },
   {
     behaviour:
-      "The client goes away in the middle of a transaction (a cancelled request, a closed socket)",
+      "The client goes away in the middle of a transaction while its backend is idle (a cancelled request, a closed socket)",
     direct: probed(
       "works",
-      "The session ends and the transaction is rolled back; its locks are released. Probed with the backend idle in the transaction; a backend that is running a statement keeps its locks until the statement ends (client_connection_check_interval is off by default), so the pg adapter cancels before it closes."
+      "The session ends and the transaction is rolled back; its locks are released. Probed with the backend idle in the transaction (the busy case is request-abort-busy)."
     ),
     evidence: hyperdriveEvidence,
     hyperdrive: throughHyperdrive(
       "breaks",
-      "Measured on a deployed Worker: without the enable_request_signal compatibility flag an aborted request's transaction committed 20 s later (3 of 3 runs); with it, it rolled back after about 0.2 s (3 of 3)."
+      "Measured on a deployed Worker: without the enable_request_signal compatibility flag an aborted request's transaction committed 20 s later (3 of 3 runs); with it, the interrupted client rolled the transaction back (an explicit ROLLBACK from the client, not a closed socket) and its lock was free after about 0.2 s (3 of 3). A closed socket was not measured through Hyperdrive."
     ),
     id: "request-abort",
     probe: "abort-rolls-back",
@@ -421,11 +421,29 @@ export const catalogue = [
       "https://developers.cloudflare.com/workers/configuration/compatibility-flags/",
       "https://developers.cloudflare.com/workers/platform/limits/",
       `${pgDocs}/protocol-flow.html#PROTOCOL-FLOW-TERMINATION`,
-      `${pgDocs}/runtime-config-connection.html#GUC-CLIENT-CONNECTION-CHECK-INTERVAL`,
     ],
     transactionPooled: probed(
       "works",
-      "PgBouncer closes the server connection and the transaction is rolled back (probed with the backend idle in the transaction; a busy backend keeps its locks until its statement ends, as on a direct connection: measured in packages/pg/test)."
+      "PgBouncer closes the server connection and the transaction is rolled back (probed with the backend idle in the transaction)."
+    ),
+  },
+  {
+    behaviour:
+      "The client goes away while the backend is running a statement (a closed socket, no cancel)",
+    direct: probed(
+      "breaks",
+      "The backend does not look at the socket until the statement ends (client_connection_check_interval is 0 by default), so the transaction's locks stay held: a second client waited and failed with a 500 ms lock_timeout while the statement ran."
+    ),
+    hyperdrive: unverified("unknown", "Not measured through Hyperdrive."),
+    id: "request-abort-busy",
+    probe: "abort-busy-holds-locks",
+    seeds: ["H6", "L3"],
+    sources: [
+      `${pgDocs}/runtime-config-connection.html#GUC-CLIENT-CONNECTION-CHECK-INTERVAL`,
+    ],
+    transactionPooled: probed(
+      "breaks",
+      "The same: PgBouncer closes its client side, PostgreSQL keeps the statement and its locks until the statement ends. Cancel the statement first (CancelRequest), then close."
     ),
   },
   {

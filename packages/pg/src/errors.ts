@@ -1,4 +1,4 @@
-import { describeMode, rowById } from "@pg-txmode/core";
+import { cellOf, describeMode, rowById } from "@pg-txmode/core";
 import type { ConnectionMode } from "@pg-txmode/core";
 
 /**
@@ -15,7 +15,7 @@ export class NamedStatementRefusedError extends Error {
     const row = rowById("named-statements-untracked");
 
     super(
-      `the named statement ${statement} is refused on a ${describeMode(mode)} connection: ${row.transactionPooled.note} Send it unnamed, or use a pooler that tracks named statements [catalogue row ${row.id}, ${row.sources.join(", ")}]`
+      `the named statement ${statement} is refused on a ${describeMode(mode)} connection: ${cellOf(mode, row.id).note} Send it unnamed, or use a pooler that tracks named statements [catalogue row ${row.id}, ${row.sources.join(", ")}]`
     );
     this.sources = row.sources;
   }

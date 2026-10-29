@@ -6,7 +6,8 @@ import {
   supavisor,
   UnsupportedFeatureError,
 } from "@pg-txmode/core";
-import { startStack } from "@pg-txmode/harness";
+import type { TransactionPooledMode } from "@pg-txmode/core";
+import { rejection, startStack } from "@pg-txmode/harness";
 import type { Stack } from "@pg-txmode/harness";
 import {
   afterAll,
@@ -37,6 +38,16 @@ afterAll(async () => {
 
 const pooledUrl = (): string => stack.pooler.endpoint.url;
 
+/** The message with which a named statement is refused on `mode`. */
+const refusal = async (mode: TransactionPooledMode): Promise<string> => {
+  const db = createDatabase({ connectionString: pooledUrl(), mode });
+  const error = await rejection(db.query("SELECT 1", [], { name: "one" }));
+
+  await db.end();
+
+  return error?.message ?? "";
+};
+
 describe("named prepared statements follow the mode", () => {
   test.each([
     ["PgBouncer with max_prepared_statements 0", pgBouncer(0)],
@@ -51,6 +62,11 @@ describe("named prepared statements follow the mode", () => {
       db.query("SELECT 1 AS v", [], { name: "one" })
     ).rejects.toThrow(/named-statements-untracked/u);
     await db.end();
+  });
+
+  test("a Supavisor refusal quotes Supabase's cell and a PgBouncer one quotes PgBouncer's", async () => {
+    expect(await refusal(supavisor)).toMatch(/Supabase documents/u);
+    expect(await refusal(pgBouncer(0))).not.toMatch(/Supabase/u);
   });
 
   test.each([
@@ -135,13 +151,27 @@ describe("session-only API exists only where the session is kept", () => {
     }
   });
 
-  test("and at compile time: the type has no such method for a pooled mode (negative control: it has for a direct one)", () => {
-    expectTypeOf<Database<typeof hyperdrive>>().toEqualTypeOf<TxClient>();
-    expectTypeOf<Database<typeof hyperdrive>>().not.toHaveProperty("listen");
-    expectTypeOf<Database<typeof direct>>().toHaveProperty("listen");
+  test("and at compile time: what createDatabase returns has no such method for a pooled mode, and has it for a direct one", async () => {
+    const pooled = createDatabase({
+      connectionString: pooledUrl(),
+      mode: hyperdrive,
+    });
+
+    const sessionful = createDatabase({
+      connectionString: stack.postgres.endpoint.url,
+      mode: direct,
+    });
+
+    expectTypeOf(pooled).toEqualTypeOf<TxClient>();
+    expectTypeOf(pooled).not.toHaveProperty("listen");
+    expectTypeOf(pooled).not.toHaveProperty("withAdvisoryLock");
+    expectTypeOf(sessionful).toHaveProperty("listen");
+    expectTypeOf(sessionful).toHaveProperty("withAdvisoryLock");
     expectTypeOf<Database<typeof sessionPooled>>().toHaveProperty(
       "withAdvisoryLock"
     );
+    await pooled.end();
+    await sessionful.end();
   });
 
   test("listen delivers a notification on a direct connection", async () => {
@@ -151,7 +181,10 @@ describe("session-only API exists only where the session is kept", () => {
     });
 
     const { promise, resolve } = Promise.withResolvers<string>();
-    const stop = await db.listen("txmode_demo", resolve);
+
+    const stop = await db.listen("txmode_demo", resolve, (error) => {
+      throw error;
+    });
 
     await db.query("SELECT pg_notify('txmode_demo', 'hello')");
     expect(await promise).toBe("hello");

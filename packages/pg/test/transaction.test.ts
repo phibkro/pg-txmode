@@ -329,6 +329,52 @@ describe("a transaction does not outlive its request", () => {
     });
   });
 
+  test("an abort while the call waits for a pool connection means the body never runs", async () => {
+    const single = createDatabase({
+      connectionString: stack.pooler.endpoint.url,
+      maxConnections: 1,
+      mode: pgBouncer(1000),
+    });
+
+    const release = Promise.withResolvers<null>();
+    const holding = Promise.withResolvers<null>();
+
+    const first = single.transaction(async () => {
+      holding.resolve(null);
+      await release.promise;
+    });
+
+    await holding.promise;
+
+    const controller = new AbortController();
+    let bodyRan = false;
+
+    const queued = rejection(
+      single.transaction(
+        async (tx) => {
+          bodyRan = true;
+          await tx.query("INSERT INTO note VALUES (400)");
+        },
+        { signal: controller.signal }
+      )
+    );
+
+    // The only connection is held, so the second call is queued inside the pool; it aborts there.
+    controller.abort();
+    release.resolve(null);
+    await first;
+
+    expect(await queued).toMatchObject({
+      name: "TransactionAbortedError",
+      outcomeUnknown: false,
+    });
+    expect(bodyRan).toBe(false);
+    expect(
+      await observer.query("SELECT k FROM note WHERE k = 400")
+    ).toHaveLength(0);
+    await single.end();
+  });
+
   test("an abort while COMMIT is on the wire is reported as an unknown outcome", async () => {
     await observer.query(
       `CREATE FUNCTION slow_commit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(1); RETURN NULL; END $$;

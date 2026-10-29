@@ -87,13 +87,23 @@ const runOnce = async <T>({
   }
 
   const client = await pool.connect();
+
+  // The request may have gone away while this call queued for a connection: nothing has run on it, so give it back.
+  if (isAborted()) {
+    client.release();
+
+    throw new TransactionAbortedError(false);
+  }
+
   const watcher = watch(client);
   let commitSent = false;
   let healthy = false;
   let closing: Promise<void> | undefined;
 
   const onAbort = (): void => {
-    closing = cancelAndClose(client);
+    if (!healthy) {
+      closing = cancelAndClose(client);
+    }
   };
 
   signal?.addEventListener("abort", onAbort, { once: true });
