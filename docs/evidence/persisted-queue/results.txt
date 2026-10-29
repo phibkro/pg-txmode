@@ -9,7 +9,7 @@ ok    memory: MemAvailable 16853 MiB of 64220 MiB, 21.4593% free after 3072 MiB 
 ok    swap-in: 37 pages/s over 10s (need < 1000)
 ok    memory PSI: full avg60 1.35% (need < 10%; avg10 0.43% is reported, not gated)
 ok    load: 1-minute load average 17.38 on 32 threads (need < 32)
-ok    disk /home/nori/.local/state/pg-txmode-verify: 314958 MiB free (need >= 1024 MiB: twice the expected 512 MiB of writes)
+ok    disk <home>/.local/state/pg-txmode-verify: 314958 MiB free (need >= 1024 MiB: twice the expected 512 MiB of writes)
 ok    disk /srv/share/projects/pg-txmode: 314958 MiB free (need >= 1024 MiB: twice the expected 512 MiB of writes)
 info  psi memory some: avg10=0.43 avg60=1.40
 info  psi cpu: avg10=1.35

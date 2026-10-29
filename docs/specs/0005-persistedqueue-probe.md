@@ -16,8 +16,11 @@ One evidence file, [`docs/evidence/persisted-queue/README.md`](../evidence/persi
 ```sh
 git checkout feat/0005-persistedqueue-probe
 # the scripts are in docs/evidence/persisted-queue/*.ts.txt; to run them: a directory with `bun add effect@4.1.0 @effect/sql-pg@4.1.0`,
-cp docs/evidence/persisted-queue/probe.ts.txt <dir>/probe.ts; cp docs/evidence/persisted-queue/child.ts.txt <dir>/child.ts   # then fix the two paths at the top of probe.ts
+cp docs/evidence/persisted-queue/probe.ts.txt <dir>/probe.ts; cp docs/evidence/persisted-queue/child.ts.txt <dir>/child.ts
+cp docs/evidence/persisted-queue/txprobe.ts.txt <dir>/txprobe.ts; cp docs/evidence/persisted-queue/txchild.ts.txt <dir>/txchild.ts
+# edit: the harness import (probe.ts line 15, txprobe.ts line 3: an absolute path) and the child path (probe.ts line 324)
 devenv shell -- bun <dir>/probe.ts offer takers twostores stale crash prepare stress m2b
+devenv shell -- bun <dir>/txprobe.ts      # about 80 s; the hanging cells are killed after 30 s
 ```
 
 Read the evidence file's tables and verdict.
@@ -33,7 +36,7 @@ Read the evidence file's tables and verdict.
 
 | Part | Content |
 | --- | --- |
-| Evidence | `docs/evidence/persisted-queue/README.md` (results, controls, source reading, verdict), `results.txt` and `controls.txt` (raw), `probe.ts.txt` and `child.ts.txt` (the scripts) |
+| Evidence | `docs/evidence/persisted-queue/README.md` (results, controls, source reading, verdict), `results.txt`, `tx-results.txt` and `controls.txt` (raw), `probe.ts.txt`, `child.ts.txt`, `txprobe.ts.txt` and `txchild.ts.txt` (the scripts) |
 | Spec | this file |
 
 ## Falsifiers
@@ -44,8 +47,9 @@ Read the evidence file's tables and verdict.
 | K2 | Concurrent takers hold one row each: 4 takers x 10 rounds, two stores x 10 rounds, 200 items with concurrent offers; on direct and behind PgBouncer, with `max_prepared_statements` 1000 and 0 | scenarios `takers`, `twostores`, `stress`, `prepare` | C1: the lease condition of the poll removed gives `everyRoundTakenExactlyOnce: false` |
 | K3 | A stale worker's late success changes nothing | scenario `stale` | C2: the fence removed from `complete()` ends the row `completed` |
 | K4 | After a SIGKILL of the worker, the row is taken again after the lease with attempts 2 | scenario `crash` | C3: a lease that never lapses takes nothing |
-| K5 | The M2b class (wrong answers, errors) is looked for with 8 fibers on a pool of 3 server connections and of 1, at `max_prepared_statements` 0 | scenario `m2b` | none on this client; the harness pins the class for node-postgres (spec 0001, F11), which is the control that the shape of workload can see it |
-| K6 | Every number in the report is in `results.txt` or `controls.txt` | read | n/a |
+| K5 | The M2b class is looked for with a **transaction** workload (the workload of Effect-TS/effect#10151: three statements in `sql.withTransaction`, 400, 8 at a time) at `max_prepared_statements` 0, default `prepare`, on a pool of 3 server connections and of 1 | scenario `selects` of `txprobe` | the same client and pooler without a transaction (`autocommit`), with `prepare: false`, and on `pgb1000`: all complete 400 of 400, so the hang is the transaction at `pgb0` with named statements, not the harness. The autocommit scenario `m2b` cannot see it |
+| K6 | Every number in the report is in `results.txt`, `tx-results.txt` or `controls.txt` | read | n/a |
+| K8 | An offer inside the caller's transaction (`INSERT` plus `q.offer` in `sql.withTransaction`, 400, 8 at a time) completes on direct, `pgb1000`, and on `pgb0` only with `prepare: false` or a pool of one; with the default `prepare` at `pgb0` it does not | scenario `offer` of `txprobe` | the `autocommit` and `prepare: false` rows of the same pooler |
 | K7 | `bun run ready` exits 0 (the PR adds no source) | `ready` | n/a |
 
 ## Constraints on the implementation
@@ -67,4 +71,9 @@ Read the evidence file's tables and verdict.
 
 ## Revisions
 
-- **2026-10-29, plan written** with the build. Findings while building: `@effect/sql-pg` 4.1.0 is a native protocol client with per-connection statement names, so the M2b scenario of the research (wrong answers and hangs at `max_prepared_statements` 0) did not reproduce and is reported as "not reproduced, not explained"; one store instance has one poller, so the claim race needed a `twostores` scenario to mean anything.
+- **2026-10-29, plan written** with the build. Findings while building: `@effect/sql-pg` 4.1.0 is a native protocol client with per-connection statement names; one store instance has one poller, so the claim race needed a `twostores` scenario to mean anything. (The first version also said the M2b scenario "did not reproduce and is not explained"; see the next entry.)
+- **2026-10-29, after review round 1 of PR #8 (recorded at `5ce91c5`; changes the verdict).**
+  1. **The verdict was wrong at `max_prepared_statements` 0.** `offer` ran only on `direct` and `pgb1000`; every `pgb0` scenario was a single autocommit statement, so no transaction ran on the one configuration that fails. A transaction of three statements, or `INSERT` plus `offer`, 400 of them 8 at a time, with the client's default `prepare`, fails (`26000`, then `25P02`) and hangs on `pgb0`; it completes with `prepare: false`, on `pgb1000`, on a pooler with one server connection, and without a transaction. This is Effect-TS/effect#10151 and the workload of `packages/effect/test/m2bClient.ts` (spec 0003, PR #7). The evidence README, K5 and the verdict now say so; the earlier "not reproduced, not explained" is withdrawn.
+  2. **K5 has a valid control now:** the same client and pooler without a transaction, with `prepare: false`, and `pgb1000` (the node-postgres pin of spec 0001 was another client's failure). The `m2b` scenario stays in the report as what it is: an autocommit scenario that cannot see this failure.
+  3. **New gate K8** and the scripts `txprobe.ts.txt` and `txchild.ts.txt` (each cell a child process killed after 30 s: an Effect timeout cannot interrupt the hung client).
+  4. Lows: the Journey names the edits the kept script needs (the harness import and the child path, lines 15 and 324 of `probe.ts.txt`) and lists all scenarios; the requirement ids (R1 to R8, LS1 to LS5, T3b) are summarised in the evidence README, which no longer needs the operator's private file to be read; `results.txt` no longer shows the home directory.

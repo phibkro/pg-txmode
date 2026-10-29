@@ -2,7 +2,8 @@
 // behind PgBouncer in transaction mode. Scratch script: it lives outside the repository because Effect may only enter the
 // repository through the Effect adapter package (spec 0003); the repository keeps this file as evidence, as text.
 //
-// usage: bun probe.ts <scenario>...   scenarios: offer takers stale crash prepare
+// usage: bun probe.ts <scenario>...   scenarios: offer takers twostores stale crash prepare stress m2b
+// Edit before running: the import of the harness (line 15, an absolute path) and the path of child.ts (line 324).
 import { Duration, Effect, Fiber, Layer, Redacted, Schema } from "effect";
 import { PersistedQueue } from "effect/persistence";
 import { SqlClient } from "effect/sql";
