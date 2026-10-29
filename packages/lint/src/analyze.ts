@@ -204,9 +204,12 @@ const transactionAfter = (raw: JsonObject, before: boolean): boolean => {
     return true;
   }
 
-  return kind === "TRANS_STMT_COMMIT" || kind === "TRANS_STMT_ROLLBACK"
-    ? false
-    : before;
+  if (kind === "TRANS_STMT_COMMIT" || kind === "TRANS_STMT_ROLLBACK") {
+    // COMMIT AND CHAIN and ROLLBACK AND CHAIN start the next transaction at once (https://www.postgresql.org/docs/current/sql-commit.html).
+    return isObject(transaction) && transaction.chain === true;
+  }
+
+  return before;
 };
 
 const parseFailure = (statement: Statement, error: Error): Finding => {

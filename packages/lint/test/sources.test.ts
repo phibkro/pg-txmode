@@ -4,6 +4,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   extractFromFile,
   extractFromLog,
+  ScriptParseError,
   lintStatements,
 } from "../src/index.ts";
 
@@ -29,13 +30,13 @@ describe("source files", () => {
     expect(extractFromFile("repo.ts", script)).toStrictEqual([
       {
         line: 3,
-        sequence: "repo.ts:3",
+        sequence: "repo.ts:3:18",
         source: "repo.ts",
         sql: "SELECT * FROM t WHERE id = $1 AND owner = $2",
       },
       {
         line: 6,
-        sequence: "repo.ts:6",
+        sequence: "repo.ts:6:16",
         source: "repo.ts",
         sql: "SET search_path = y",
       },
@@ -56,6 +57,46 @@ describe("source files", () => {
     expect(
       findings.map((finding) => [finding.ruleId, finding.line])
     ).toStrictEqual([["session-set", 6]]);
+  });
+});
+
+describe("scripts the lint cannot read", () => {
+  test("a script that does not parse is an error, never 0 statements and success", () => {
+    expect(() =>
+      extractFromFile(
+        "broken.ts",
+        "const a = sql`SET search_path = x`;\nconst b = ;"
+      )
+    ).toThrow(ScriptParseError);
+  });
+
+  test("two templates on one line are two sequences, so a BEGIN in one does not cover the other", async () => {
+    const line = "const a = [sql`BEGIN`, sql`SELECT 1 FROM t FOR UPDATE`];";
+
+    const statements = extractFromFile("two.ts", line);
+
+    const findings = await lintStatements(statements, {
+      mode: pgBouncer(1000),
+    });
+
+    expect(
+      new Set(statements.map((statement) => statement.sequence)).size
+    ).toBe(2);
+    expect(findings.map((finding) => finding.ruleId)).toStrictEqual([
+      "row-lock-outside-transaction",
+    ]);
+  });
+
+  test("COMMIT AND CHAIN leaves a transaction open, so a row lock after it is fine", async () => {
+    const findings = await lintStatements(
+      extractFromFile(
+        "chain.sql",
+        "BEGIN; COMMIT AND CHAIN; SELECT 1 FROM t FOR UPDATE; COMMIT;"
+      ),
+      { mode: pgBouncer(1000) }
+    );
+
+    expect(findings).toStrictEqual([]);
   });
 });
 
@@ -102,5 +143,15 @@ describe("a recorded statement log", () => {
     expect(() =>
       extractFromLog("bad.ndjson", '{"sql": "SELECT 1"}\n{"query": 1}\n')
     ).toThrow(/line 2/u);
+  });
+
+  test("the line of a finding is the physical line of the log, blank lines included", async () => {
+    const text = `${encodeLogEntry({ sql: "SELECT 1" })}\n\n${encodeLogEntry({ sql: "SET search_path = x" })}\n`;
+
+    const findings = await lintStatements(extractFromLog("run.ndjson", text), {
+      mode: pgBouncer(1000),
+    });
+
+    expect(findings.map((finding) => finding.line)).toStrictEqual([3]);
   });
 });

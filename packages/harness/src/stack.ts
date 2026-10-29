@@ -22,6 +22,8 @@ export interface Endpoint {
 }
 
 export interface Postgres {
+  /** Sends the smart-shutdown signal: the server refuses new connections while existing sessions go on. */
+  readonly beginSmartShutdown: () => void;
   readonly endpoint: Endpoint;
   readonly maxConnections: number;
   readonly stop: () => Promise<void>;
@@ -228,7 +230,16 @@ export const startPostgres = async (
     throw error;
   }
 
-  return { endpoint: endpointOf(port), maxConnections, stop: cleanUp };
+  return {
+    beginSmartShutdown: () => {
+      // SIGTERM is the smart shutdown: no new connections (57P03), existing sessions stay until they end
+      // (https://www.postgresql.org/docs/current/server-shutdown.html).
+      running.child.kill("SIGTERM");
+    },
+    endpoint: endpointOf(port),
+    maxConnections,
+    stop: cleanUp,
+  };
 };
 
 const openFileLimit = async (): Promise<number> => {

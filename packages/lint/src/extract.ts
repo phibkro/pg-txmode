@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { Statement } from "./analyze.ts";
 import { field, isList, isObject, text, toJson } from "./ast.ts";
 import type { JsonNode } from "./ast.ts";
+import { ScriptParseError } from "./scriptParseError.ts";
 
 /** The template tags that mark SQL. */
 export const defaultTags: readonly string[] = ["sql"];
@@ -32,6 +33,9 @@ const nodesOfType = (root: JsonNode, type: string): readonly JsonNode[] => {
 const lineAt = (source: string, offset: number): number =>
   source.slice(0, offset).split("\n").length;
 
+const columnAt = (source: string, offset: number): number =>
+  offset - source.lastIndexOf("\n", offset - 1);
+
 /** The SQL of one tagged template, with each `${...}` replaced by the parameter `$n` a driver would send. */
 const templateText = (quasis: JsonNode | undefined): string | undefined => {
   if (!isList(quasis)) {
@@ -53,14 +57,31 @@ const templateText = (quasis: JsonNode | undefined): string | undefined => {
     .join("");
 };
 
-/** The SQL in the tagged templates of a JavaScript or TypeScript file. Each template is its own sequence. */
+/**
+ * The SQL in the tagged templates of a JavaScript or TypeScript file. Each template is its own sequence, named by where it
+ * starts. Throws `ScriptParseError` for a script that does not parse.
+ */
 export const extractFromScript = (
   path: string,
   source: string,
   tags: readonly string[] = defaultTags
-): readonly Statement[] =>
-  nodesOfType(
-    toJson(parseSync(path, source).program),
+): readonly Statement[] => {
+  const parsed = parseSync(path, source);
+  const [problem] = parsed.errors;
+
+  if (problem !== undefined) {
+    const at = problem.labels[0]?.start ?? 0;
+
+    throw new ScriptParseError(
+      path,
+      lineAt(source, at),
+      columnAt(source, at),
+      problem.message
+    );
+  }
+
+  return nodesOfType(
+    toJson(parsed.program),
     "TaggedTemplateExpression"
   ).flatMap((node) => {
     const tag = isObject(node) ? field(node, "tag") : undefined;
@@ -83,9 +104,11 @@ export const extractFromScript = (
     }
 
     const line = lineAt(source, start);
+    const column = columnAt(source, start);
 
-    return [{ line, sequence: `${path}:${line}`, source: path, sql }];
+    return [{ line, sequence: `${path}:${line}:${column}`, source: path, sql }];
   });
+};
 
 /** The statements of a file: a `.sql` file is one sequence; a script's tagged templates are one each. */
 export const extractFromFile = (
@@ -106,19 +129,28 @@ export class StatementLogError extends Error {
   override readonly name = "StatementLogError";
 }
 
+interface LogLine {
+  readonly number: number;
+  readonly entry: StatementLogEntry;
+}
+
 /** Reads a log (`StatementLogEntry` per line); a line that is not an entry is an error that names its line number. */
-const decodeLog = (content: string): readonly StatementLogEntry[] =>
+const decodeLog = (content: string): readonly LogLine[] =>
   content
     .split("\n")
     .map((line, index) => ({ line, number: index + 1 }))
     .filter(({ line }) => line.trim() !== "")
     .map(({ line, number }) => {
       try {
-        const entry = LogEntry.parse(JSON.parse(line));
+        const parsed = LogEntry.parse(JSON.parse(line));
 
-        return entry.session === undefined
-          ? { sql: entry.sql }
-          : { session: entry.session, sql: entry.sql };
+        return {
+          entry:
+            parsed.session === undefined
+              ? { sql: parsed.sql }
+              : { session: parsed.session, sql: parsed.sql },
+          number,
+        };
       } catch {
         throw new StatementLogError(
           `statement log line ${number}: expected {"sql": string, "session"?: string}`
@@ -126,13 +158,13 @@ const decodeLog = (content: string): readonly StatementLogEntry[] =>
       }
     });
 
-/** The statements of a recorded log: one sequence per session, in the order recorded. */
+/** The statements of a recorded log: one sequence per session, in the order recorded, at their line of the log file. */
 export const extractFromLog = (
   name: string,
   content: string
 ): readonly Statement[] =>
-  decodeLog(content).map((entry, index) => ({
-    line: index + 1,
+  decodeLog(content).map(({ entry, number }) => ({
+    line: number,
     sequence: `${name}#${entry.session ?? ""}`,
     source: name,
     sql: entry.sql,

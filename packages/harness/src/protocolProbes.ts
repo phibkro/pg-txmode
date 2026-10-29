@@ -8,17 +8,36 @@ import type { Probe, Target } from "./probe.ts";
 import { pgConnect, rejection, sendCancel } from "./session.ts";
 import type { Session } from "./session.ts";
 
-/** Starts a long statement in a transaction on `session`, asks for a cancel after `afterMs`, and returns how it ended. */
+const longStatement = "SELECT pg_sleep(30)";
+
+/** Polls PostgreSQL itself until `text` is running on some backend: the cancel must not land before the statement starts. */
+const untilActive = async (target: Target, text: string): Promise<void> => {
+  await withSessions(pgConnect(target.direct.url), 1, async ([observer]) => {
+    for (let tries = 0; tries < 500; tries += 1) {
+      const rows = await observer?.query(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE state = 'active' AND query = $1 AND pid <> pg_backend_pid()",
+        [text]
+      );
+
+      if (Number(rows?.[0]?.n) > 0) {
+        return;
+      }
+
+      await sleep(10);
+    }
+  });
+};
+
+/** Starts a long statement in a transaction on `session`, cancels it once it is running, and returns how it ended. */
 const cancelledStatement = async (
   target: Target,
-  session: Session,
-  afterMs: number
+  session: Session
 ): Promise<Error | undefined> => {
   await session.query("BEGIN");
 
-  const running = rejection(session.query("SELECT pg_sleep(30)"));
+  const running = rejection(session.query(longStatement));
 
-  await sleep(afterMs);
+  await untilActive(target, longStatement);
   await sendCancel(target.endpoint, session.cancelKey);
 
   return await running;
@@ -51,7 +70,7 @@ const cancelForwarded: Probe = {
       const error =
         session === undefined
           ? undefined
-          : await cancelledStatement(target, session, 300);
+          : await cancelledStatement(target, session);
 
       const elapsed = Date.now() - started;
       const detail = `${errorText(error)} after ${elapsed} ms`;
@@ -86,7 +105,7 @@ const statementTimeoutVsCancel: Probe = {
           timeoutSession.query("SELECT pg_sleep(5)")
         );
 
-        const cancelled = await cancelledStatement(target, cancelSession, 300);
+        const cancelled = await cancelledStatement(target, cancelSession);
         const detail = `timeout: ${errorText(timedOut)} => ${kindOf(timedOut)}; cancel: ${errorText(cancelled)} => ${kindOf(cancelled)}`;
 
         return kindOf(timedOut) === "statement-timeout" &&

@@ -1,5 +1,6 @@
 import {
   claim,
+  claimJob,
   dropExampleSchema,
   exampleSchema,
   failureOf,
@@ -55,7 +56,7 @@ const inTransaction = async <T>(
   return result;
 };
 
-/** 20 clients each try to withdraw 100 from 1000: exactly 10 succeed, the balance ends at 0, never below. */
+/** 20 clients each try to withdraw 300 from 1000: exactly 3 succeed, the balance ends at 100, never below 0. */
 const rowLockProbe: Probe = {
   id: "pattern-row-lock",
   maxPreparedStatements: 1000,
@@ -127,6 +128,52 @@ const rowLockProbe: Probe = {
         ? works(detail)
         : breaks(detail);
     }),
+};
+
+/** Worker A claims a job inside an open transaction; worker B, in another, must take the next job instead of waiting. */
+const skipLockedProbe: Probe = {
+  id: "pattern-skip-locked",
+  maxPreparedStatements: 1000,
+  poolSize: 2,
+  run: async (target) =>
+    await withExampleSchema(
+      target,
+      async () =>
+        await withSessions(target.connect, 2, async ([a, b]) => {
+          if (a === undefined || b === undefined) {
+            return breaks("no sessions");
+          }
+
+          await a.query(
+            "INSERT INTO jobs (state) SELECT 'queued' FROM generate_series(1, 3)"
+          );
+          await a.query("BEGIN");
+
+          const first = await a.query(claimJob.statements.claim, ["a"]);
+
+          await b.query("BEGIN");
+          // Without SKIP LOCKED the second claim waits for the first one's row lock; 500 ms turns that into a failure.
+          await b.query("SET LOCAL lock_timeout = '500ms'");
+
+          const [second] = await Promise.allSettled([
+            b.query(claimJob.statements.claim, ["b"]),
+          ]);
+
+          await a.query("ROLLBACK");
+          await b.query("ROLLBACK");
+
+          const detail =
+            second?.status === "fulfilled"
+              ? `worker A holds job ${first[0]?.id} in an open transaction; worker B took job ${second.value[0]?.id}`
+              : `worker B did not get a job: ${second?.reason}`;
+
+          return second?.status === "fulfilled" &&
+            Number(first[0]?.id) === 1 &&
+            Number(second.value[0]?.id) === 2
+            ? works(detail)
+            : breaks(detail);
+        })
+    ),
 };
 
 /** 20 clients claim one key: one row comes back, one row exists. */
@@ -430,6 +477,7 @@ const retryProbe: Probe = {
 
 export const patternProbes: readonly Probe[] = [
   rowLockProbe,
+  skipLockedProbe,
   onConflictClaimProbe,
   savepointProbe,
   isolationProbe,

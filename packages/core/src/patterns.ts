@@ -46,7 +46,7 @@ export const rowLock: Pattern<"lock" | "withdraw"> = {
 export const claimJob: Pattern<"claim"> = {
   id: "claim-job",
   needsTransaction: false,
-  rows: ["row-locks"],
+  rows: ["skip-locked"],
   statements: {
     // One statement: the lock and the write are atomic, and concurrent workers skip rows that are taken.
     claim:
@@ -82,7 +82,7 @@ export const conditionalUpdate: Pattern<"update"> = {
 export const outbox: Pattern<"insertMessage" | "insertOrder" | "relay"> = {
   id: "outbox",
   needsTransaction: true,
-  rows: ["row-locks"],
+  rows: ["skip-locked"],
   statements: {
     // Inside one transaction: the change and the message commit together or not at all.
     insertMessage:
@@ -98,7 +98,7 @@ export const outbox: Pattern<"insertMessage" | "insertOrder" | "relay"> = {
 export const transactionContext: Pattern<"read" | "set"> = {
   id: "transaction-context",
   needsTransaction: true,
-  rows: ["set-local"],
+  rows: ["set-config-local"],
   statements: {
     read: "SELECT current_setting('app.actor', true) AS actor",
     // `true` makes the setting local to the transaction; `false` would be a session setting, which leaks.

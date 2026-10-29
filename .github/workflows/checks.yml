@@ -35,6 +35,9 @@ jobs:
       - name: Exception registry
         shell: bash
         run: devenv shell -- bun run check:exceptions
+      - name: README table
+        shell: bash
+        run: devenv shell -- bun run check:docs
       - name: Workspace tests
         shell: bash
         run: devenv shell -- bun run test

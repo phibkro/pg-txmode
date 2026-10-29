@@ -4,7 +4,7 @@ import { classifyFailure, failureOf, openingScript } from "@pg-txmode/core";
 import type { FailureKind } from "@pg-txmode/core";
 import { describe, expect, test } from "vite-plus/test";
 
-import { pgConnect, rejection } from "../src/index.ts";
+import { pgConnect, rejection, startPostgres } from "../src/index.ts";
 import type { Connect, Session } from "../src/index.ts";
 import { withSessions } from "../src/probe.ts";
 import { useStack } from "./fixtures.ts";
@@ -123,6 +123,18 @@ const scenarios: readonly {
       await a.query("SELECT pg_sleep(5)");
     },
   },
+  {
+    expected: { code: "57P01", kind: "connection-lost" },
+    name: "pg_terminate_backend (administrator command)",
+    run: async (a, b) => {
+      await a.query("BEGIN");
+
+      const pid = (await a.query("SELECT pg_backend_pid() AS v"))[0]?.v;
+
+      await b.query("SELECT pg_terminate_backend($1::int)", [pid ?? 0]);
+      await a.query("SELECT 1");
+    },
+  },
 ];
 
 const connections: readonly [string, () => Connect][] = [
@@ -220,3 +232,41 @@ describe.each(connections)(
     });
   }
 );
+
+describe("the server that is shutting down", () => {
+  test("a new connection is refused with 57P03 while a smart shutdown waits for the open sessions", async () => {
+    const postgres = await startPostgres();
+
+    try {
+      await withSessions(pgConnect(postgres.endpoint.url), 1, async () => {
+        postgres.beginSmartShutdown();
+
+        // The open session keeps the server up; only the next connection is refused, so poll until the signal has landed.
+        const refused = async (tries: number): Promise<Error | undefined> => {
+          const error = await rejection(
+            withSessions(pgConnect(postgres.endpoint.url), 1, async () => {})
+          );
+
+          if (error !== undefined || tries === 0) {
+            return error;
+          }
+
+          await sleep(20);
+
+          return await refused(tries - 1);
+        };
+
+        const failure = failureOf(
+          (await refused(250)) ?? new Error("accepted")
+        );
+
+        expect({ code: failure?.sqlState, kind: failure?.kind }).toStrictEqual({
+          code: "57P03",
+          kind: "connection-lost",
+        });
+      });
+    } finally {
+      await postgres.stop();
+    }
+  });
+});

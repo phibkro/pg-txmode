@@ -17,6 +17,7 @@ import type { ConnectionMode } from "@pg-txmode/core";
 import { lintStatements } from "./analyze.ts";
 import type { Finding, Statement } from "./analyze.ts";
 import { extractFromFile, extractFromLog } from "./extract.ts";
+import { ScriptParseError } from "./scriptParseError.ts";
 
 const modes = new Map<string, ConnectionMode>([
   ["direct", direct],
@@ -95,14 +96,40 @@ const main = async (): Promise<number> => {
     return 64;
   }
 
+  const parseFailures: Finding[] = [];
+
+  const fromFile = (file: string): readonly Statement[] => {
+    try {
+      return extractFromFile(file, readFileSync(file, "utf-8"));
+    } catch (error) {
+      if (error instanceof ScriptParseError) {
+        parseFailures.push({
+          column: error.column,
+          line: error.line,
+          message: `the script does not parse, so its templates were not checked: ${error.message}`,
+          row: undefined,
+          ruleId: "parse-error",
+          severity: "error",
+          source: error.path,
+          sources: [],
+        });
+
+        return [];
+      }
+
+      throw error;
+    }
+  };
+
   const statements: Statement[] = [
-    ...paths
-      .flatMap(filesUnder)
-      .flatMap((file) => extractFromFile(file, readFileSync(file, "utf-8"))),
+    ...paths.flatMap(filesUnder).flatMap(fromFile),
     ...logs.flatMap((log) => extractFromLog(log, readFileSync(log, "utf-8"))),
   ];
 
-  const findings = await lintStatements(statements, { mode });
+  const findings = [
+    ...parseFailures,
+    ...(await lintStatements(statements, { mode })),
+  ];
 
   process.stdout.write(
     `${findings.map(describeFinding).join("\n")}${findings.length === 0 ? "" : "\n"}${statements.length} statement(s) checked for ${modeName}: ${findings.filter((finding) => finding.severity === "error").length} error(s), ${findings.filter((finding) => finding.severity === "warning").length} warning(s)\n`

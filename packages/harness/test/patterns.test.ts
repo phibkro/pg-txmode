@@ -74,6 +74,30 @@ describe("claim a job (FOR UPDATE SKIP LOCKED)", () => {
       expect(sorted(claimed)).toStrictEqual(upTo(30));
     });
   });
+
+  test("a job claimed inside an open transaction is skipped by a second worker, which takes the next job instead of waiting", async () => {
+    await withSchema(async () => {
+      await seed(
+        stack().connect,
+        "INSERT INTO jobs (state) SELECT 'queued' FROM generate_series(1, 3)"
+      );
+      await withTwo(stack().connect, async (a, b) => {
+        await a.query("BEGIN");
+
+        const first = await one(a, claimJob.statements.claim, ["a"]);
+
+        await b.query("BEGIN");
+        // Without SKIP LOCKED the second claim would wait for the first one's row lock; 500 ms makes that a failure.
+        await b.query("SET LOCAL lock_timeout = '500ms'");
+
+        const second = await one(b, claimJob.statements.claim, ["b"]);
+
+        await b.query("COMMIT");
+        await a.query("ROLLBACK");
+        expect([Number(first?.id), Number(second?.id)]).toStrictEqual([1, 2]);
+      });
+    });
+  });
 });
 
 describe("write only if nobody wrote first", () => {
@@ -160,6 +184,37 @@ describe("outbox", () => {
       );
 
       expect(sorted(published)).toStrictEqual(upTo(40));
+    });
+  });
+
+  test("a relay that holds its rows in an open transaction is skipped by a second relay, which takes the next ones instead of waiting", async () => {
+    await withSchema(async () => {
+      await seed(
+        stack().connect,
+        "INSERT INTO outbox (topic, payload) SELECT 't', '{}' FROM generate_series(1, 6)"
+      );
+      await withTwo(stack().connect, async (a, b) => {
+        await a.query("BEGIN");
+
+        const first = await a.query(outbox.statements.relay, [2]);
+
+        await b.query("BEGIN");
+        // Without SKIP LOCKED the second relay would wait for the first one's row locks; 500 ms makes that a failure.
+        await b.query("SET LOCAL lock_timeout = '500ms'");
+
+        const second = await b.query(outbox.statements.relay, [2]);
+
+        await b.query("COMMIT");
+        await a.query("ROLLBACK");
+        expect(
+          [first, second].map((rows) =>
+            sorted([rows.map((row) => Number(row.id))])
+          )
+        ).toStrictEqual([
+          [1, 2],
+          [3, 4],
+        ]);
+      });
     });
   });
 });

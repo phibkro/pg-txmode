@@ -22,16 +22,10 @@ const pairProbe = (
 const setLocal = pairProbe("scoped-set-local", 1, async (a, b) => {
   await a.query("BEGIN");
   await a.query("SET LOCAL statement_timeout = '7s'");
-  await a.query("SELECT set_config('app.local_probe', 'alice', true)");
 
   const inside = await first(
     a,
     "SELECT current_setting('statement_timeout') AS v"
-  );
-
-  const actor = await first(
-    a,
-    "SELECT current_setting('app.local_probe') AS v"
   );
 
   await a.query("COMMIT");
@@ -41,19 +35,30 @@ const setLocal = pairProbe("scoped-set-local", 1, async (a, b) => {
     "SELECT current_setting('statement_timeout') AS v"
   );
 
+  const detail = `inside: statement_timeout=${inside}; next client after COMMIT: statement_timeout=${after}`;
+
+  return inside === "7s" && after === "0" ? works(detail) : leaks(detail);
+});
+
+const setConfigLocal = pairProbe("scoped-set-config-local", 1, async (a, b) => {
+  await a.query("BEGIN");
+  await a.query("SELECT set_config('app.local_probe', 'alice', true)");
+
+  const actor = await first(
+    a,
+    "SELECT current_setting('app.local_probe') AS v"
+  );
+
+  await a.query("COMMIT");
+
   const actorAfter = await first(
     b,
     "SELECT coalesce(current_setting('app.local_probe', true), '') AS v"
   );
 
-  const detail = `inside: statement_timeout=${inside} actor=${actor}; next client after COMMIT: statement_timeout=${after} actor='${actorAfter}'`;
+  const detail = `inside: actor=${actor}; next client after COMMIT: actor='${actorAfter}'`;
 
-  return inside === "7s" &&
-    actor === "alice" &&
-    after === "0" &&
-    actorAfter === ""
-    ? works(detail)
-    : leaks(detail);
+  return actor === "alice" && actorAfter === "" ? works(detail) : leaks(detail);
 });
 
 /** A transaction-level advisory lock excludes another client while the transaction is open and ends with it. */
@@ -130,6 +135,7 @@ const cursorInTransaction = pairProbe(
 
 export const scopedProbes: readonly Probe[] = [
   setLocal,
+  setConfigLocal,
   advisoryXact,
   tempOnCommitDrop,
   cursorInTransaction,

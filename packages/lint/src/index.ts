@@ -10,6 +10,8 @@ export {
   StatementLogError,
 } from "./extract.ts";
 
+export { ScriptParseError } from "./scriptParseError.ts";
+
 export { featureRules, uncachedFunctions } from "./rules.ts";
 
 export type { FeatureRule } from "./rules.ts";

@@ -1,6 +1,6 @@
-import { rowById } from "./catalogue.ts";
+import { rowById, supavisorCells } from "./catalogue.ts";
 import type { RowId } from "./catalogue.ts";
-import type { Column, Outcome } from "./catalogueTypes.ts";
+import type { Cell, Column, Outcome } from "./catalogueTypes.ts";
 
 /**
  * The connection mode: what stands between the client and PostgreSQL. A client is built for one mode and receives only
@@ -149,17 +149,14 @@ export const columnOf = (mode: ConnectionMode): Column => {
   return mode.pooler === "hyperdrive" ? "hyperdrive" : "transactionPooled";
 };
 
-export const cellOf = (mode: ConnectionMode, id: RowId) =>
-  rowById(id)[columnOf(mode)];
-
 /**
- * Supavisor's shared pooler: no pipelining and no named statements (https://supabase.com/docs/guides/database/connecting-to-postgres,
- * "Transaction mode does not support query pipelining"; the per-driver switch is `prepare: false`). The catalogue's
- * transaction-pooled column is PgBouncer's, so these two are the only cells that differ for it.
+ * The cell of `id` in the mode's column. Supavisor is the transaction-pooled column with the cells of `supavisorCells`
+ * laid over it, so its differences from PgBouncer are catalogue data, quoted by the errors that refuse them.
  */
-const supavisorOverrides: Partial<Record<Feature, Support>> = {
-  pipelining: "no",
-};
+export const cellOf = (mode: ConnectionMode, id: RowId): Cell =>
+  mode.kind === "TransactionPooled" && mode.pooler === "supavisor"
+    ? (supavisorCells[id] ?? rowById(id).transactionPooled)
+    : rowById(id)[columnOf(mode)];
 
 const preparedStatementsOf = (mode: ConnectionMode): PreparedStatements => {
   if (mode.kind !== "TransactionPooled") {
@@ -178,13 +175,8 @@ const preparedStatementsOf = (mode: ConnectionMode): PreparedStatements => {
 };
 
 export const capabilities = (mode: ConnectionMode): Capabilities => {
-  const overrides =
-    mode.kind === "TransactionPooled" && mode.pooler === "supavisor"
-      ? supavisorOverrides
-      : {};
-
   const support = (feature: Feature): Support =>
-    overrides[feature] ?? supportOf(cellOf(mode, featureRows[feature]).outcome);
+    supportOf(cellOf(mode, featureRows[feature]).outcome);
 
   return {
     cachesReads: cellOf(mode, "query-cache").outcome === "differs",
@@ -227,7 +219,7 @@ export class UnsupportedFeatureError extends Error {
 
   constructor(mode: ConnectionMode, feature: Feature, support: Support) {
     const row = rowById(featureRows[feature]);
-    const cell = row[columnOf(mode)];
+    const cell = cellOf(mode, row.id);
 
     super(
       `${feature} is ${support === "no" ? "not available" : "unverified"} on a ${describeMode(mode)} connection: ${cell.note} (catalogue row ${row.id}; ${row.sources.join(", ")})`

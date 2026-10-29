@@ -111,12 +111,11 @@ export const catalogue = [
     ),
   },
   {
-    behaviour:
-      "SET LOCAL and set_config(name, value, true): a setting for one transaction",
+    behaviour: "SET LOCAL: a setting for one transaction",
     direct: docs("works", "Reverts at COMMIT or ROLLBACK."),
     hyperdrive: docs(
       "works",
-      "SET is supported for the duration of a transaction."
+      "Cloudflare: 'Hyperdrive supports SET statements for the duration of a transaction or a query' and RESETs the connection when it returns to the pool. SET LOCAL is a SET statement; the page does not name it."
     ),
     id: "set-local",
     probe: "scoped-set-local",
@@ -125,6 +124,26 @@ export const catalogue = [
     transactionPooled: probed(
       "works",
       "Visible inside the transaction, gone after it; the next client on the server connection sees the default."
+    ),
+  },
+  {
+    behaviour:
+      "set_config(name, value, true): a setting for one transaction, set by a function call",
+    direct: docs("works", "Reverts at COMMIT or ROLLBACK (is_local = true)."),
+    hyperdrive: unverified(
+      "unknown",
+      "Cloudflare documents SET statements; set_config is a function call inside a SELECT and the page does not name it. Not measured."
+    ),
+    id: "set-config-local",
+    probe: "scoped-set-config-local",
+    seeds: ["H2", "M1"],
+    sources: [
+      `${pgDocs}/functions-admin.html#FUNCTIONS-ADMIN-SET`,
+      hyperdrivePooling,
+    ],
+    transactionPooled: probed(
+      "works",
+      "Visible inside the transaction, gone after it; the next client on the server connection sees no value."
     ),
   },
   {
@@ -187,9 +206,9 @@ export const catalogue = [
     behaviour:
       "Unnamed extended-protocol statements (a driver's prepare: false, or any parameterised query without a name)",
     direct: docs("works", "Parse, Bind, Execute in one exchange."),
-    hyperdrive: docs(
-      "breaks",
-      "Cloudflare's postgres.js page: prepare: false 'can cause queries to hang or fail intermittently'; it also makes queries uncacheable. Whether another client's unnamed path (one write, as @effect/sql-pg does) is safe is not documented."
+    hyperdrive: unverified(
+      "unknown",
+      "Cloudflare's postgres.js page says that driver's prepare: false 'can cause queries to hang or fail intermittently'; it says nothing of other drivers. The downstream run's checks passed with @effect/sql-pg, whose unnamed path is used for most statements, but that run was not designed to test this."
     ),
     id: "unnamed-statements",
     probe: "unnamed-statements",
@@ -483,8 +502,7 @@ export const catalogue = [
     ),
   },
   {
-    behaviour:
-      "Row locks (SELECT ... FOR UPDATE, SKIP LOCKED) inside a transaction",
+    behaviour: "Row locks (SELECT ... FOR UPDATE) inside a transaction",
     direct: docs("works", "The lock is held until the transaction ends."),
     hyperdrive: unverified(
       "unknown",
@@ -500,12 +518,32 @@ export const catalogue = [
     ),
   },
   {
+    behaviour:
+      "FOR UPDATE SKIP LOCKED: a second worker skips the rows an open transaction holds",
+    direct: docs(
+      "works",
+      "Rows locked by another transaction are skipped instead of waited for."
+    ),
+    hyperdrive: unverified(
+      "unknown",
+      "Not measured through Hyperdrive in the downstream run."
+    ),
+    id: "skip-locked",
+    probe: "pattern-skip-locked",
+    seeds: ["H6"],
+    sources: [`${pgDocs}/sql-select.html#SQL-FOR-UPDATE-SHARE`],
+    transactionPooled: probed(
+      "works",
+      "Worker A claimed job 1 in an open transaction; worker B, in another with lock_timeout 500 ms, took job 2 and did not wait."
+    ),
+  },
+  {
     behaviour: "INSERT ... ON CONFLICT ... RETURNING as a claim",
     direct: docs("works", "Exactly one concurrent inserter gets the row back."),
     evidence: hyperdriveEvidence,
     hyperdrive: throughHyperdrive(
       "works",
-      "Check 5 (DO NOTHING and DO UPDATE) and check 8 (20 concurrent upserts on one key: one row) of the downstream run."
+      "Check 5 (sequential: DO NOTHING returned the row, then none; DO UPDATE returned the same id twice) and check 8 (20 concurrent DO UPDATE upserts on one key all returned the same row, one row stored) of the downstream run. A concurrent DO NOTHING claim, with exactly one winner, was not run through Hyperdrive."
     ),
     id: "on-conflict",
     probe: "pattern-on-conflict-claim",
@@ -523,7 +561,7 @@ export const catalogue = [
     evidence: hyperdriveEvidence,
     hyperdrive: throughHyperdrive(
       "works",
-      "Check 6 of the downstream run classified a unique violation by its SQLSTATE. Errors with no PostgreSQL equivalent use 58000."
+      "Check 6 of the downstream run: one unique violation (23505) arrived with its SQLSTATE and was classified. 40001 and 40P01 were not raised through Hyperdrive and are unverified; Cloudflare says errors pass through 'unchanged when possible' and use 58000 when there is no PostgreSQL equivalent."
     ),
     id: "sqlstate-passthrough",
     probe: "pattern-retry",
@@ -685,9 +723,9 @@ export const catalogue = [
     behaviour:
       "A pooled database endpoint behind Hyperdrive (a pooler behind a pooler)",
     direct: docs("works", "Not applicable: there is no first pooler."),
-    hyperdrive: docs(
-      "unsupported",
-      "For Neon, use the direct endpoint: 'uncheck the connection pooling checkbox'."
+    hyperdrive: unverified(
+      "unknown",
+      "Cloudflare's Neon page tells the reader to use the direct endpoint ('uncheck the connection pooling checkbox'); it does not say what happens with a pooled one. Not measured."
     ),
     id: "pooled-endpoint-behind-hyperdrive",
     seeds: ["H16"],
@@ -701,13 +739,13 @@ export const catalogue = [
     direct: docs("works", "Not applicable."),
     hyperdrive: docs(
       "differs",
-      "Updating the settings does not tear down the existing pool; the old origin connections wait for the 10-minute idle timeout, so origin connections can double."
+      "Cloudflare: updating the settings 'does not tear down the existing database connection pool'; new connections use the new information, and restarting the pool drains the old ones. (How long the old ones stay open is not documented.)"
     ),
     id: "config-update",
     seeds: ["H17"],
     sources: [
-      "https://github.com/alchemy-run/alchemy/issues/1807",
       "https://developers.cloudflare.com/hyperdrive/configuration/rotate-credentials/",
+      "https://developers.cloudflare.com/hyperdrive/concepts/connection-pooling/#restart-the-connection-pool",
     ],
     transactionPooled: docs("works", "Not applicable."),
   },
@@ -737,6 +775,22 @@ export type RowId = CatalogueRow["id"];
 export const probeIds = catalogue.flatMap((row) =>
   "probe" in row ? [row.probe] : []
 );
+
+/**
+ * Supavisor's shared pooler differs from PgBouncer in these rows only. Supabase: "Transaction mode does not support prepared
+ * statements" and "query pipelining" (https://supabase.com/docs/guides/database/connecting-to-postgres; the per-driver switch
+ * is `prepare: false`). The transaction-pooled column of every other row is PgBouncer's. Not measured here: no Supavisor ran.
+ */
+export const supavisorCells: Partial<Record<RowId, Cell>> = {
+  "named-statements-untracked": docs(
+    "breaks",
+    "Supabase documents transaction mode as not supporting prepared statements; use unnamed statements (prepare: false)."
+  ),
+  pipelining: docs(
+    "breaks",
+    "Supabase documents transaction mode as not supporting query pipelining."
+  ),
+};
 
 export const rowById = (id: RowId): CatalogueRow => {
   const row = catalogue.find((candidate) => candidate.id === id);
