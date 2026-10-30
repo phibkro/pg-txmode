@@ -115,7 +115,7 @@ The rules sit in `tools/quality/release.ts` and `releaseWorkflow.ts`, plain Type
 2. A separate PR adds one changeset and runs `bun run release:version`: `0.1.0-alpha.0`, CHANGELOGs, `.changeset/pre/`.
 3. The operator dispatches **Release, `mode=check`** (Actions > Release > Run workflow). Read the result: the dry-run tarball listing of four packages, the token's user, and whether `npm access list packages @pg-txmode` and `npm org ls pg-txmode` can read.
 4. A PR deletes `.github/release-hold` (a dated entry here).
-5. The operator dispatches `mode=publish`: the first publish of each name creates it. If it fails with E403 or E404 the token lacks permission to create packages in the scope; that was not checked (the docs read name scopes and packages; no run).
+5. The operator dispatches `mode=publish`: the first publish of each name creates it. If it fails with E403 or E404 the token lacks permission to create packages in the scope; that was not checked (the docs read name scopes and packages; no run). **Afterwards**: read `npm view @pg-txmode/<name> dist-tags` for each package (the `check` mode prints it too) and decide whether `latest` should stay on `0.1.0-alpha.0`.
 6. Later: configure trusted publishers, then the removal checklist below.
 
 ## Not claimed
@@ -128,7 +128,7 @@ The rules sit in `tools/quality/release.ts` and `releaseWorkflow.ts`, plain Type
 ## Risks
 
 - **The first publish is the only proof of the token's reach.** A real run could publish one name and fail another (E403 or E404 on a name the token may not create). The `Publish` step skips a version that `npm view` finds, so a re-run after the token is fixed publishes the rest (observed against the local registry: `is on the registry: skipped`, not on npm).
-- **`latest` is not ours.** See Revisions 5: the registry decides it on a first publish.
+- **`latest` is not ours.** See Revisions 5 and 10: the registry decides it on a first publish; what npm does is not observed.
 - **The token is a bridge.** It expires, and direct token publishing ends in January 2027.
 - **Hidden duplicates.** A repository secret named `NPM_TOKEN` would be shadowed by the environment secret only inside jobs that name the environment; no file shows it. `gh secret list --repo phibkro/pg-txmode` must list none.
 - **`vp pack` is young.** The declarations are produced by the experimental TypeScript 7 declaration emit (`warn: TypeScript 7.0 does not yet have a stable API and is experimental`); the consumer check above is the guard.
@@ -151,3 +151,7 @@ Order matters: npm's rule is that a new trusted-publisher configuration must com
   7. **Library ranges are carets.** A shipped `catalog:` dependency was the catalog's exact pin (`pg` 8.23.1, `zod` 4.6.7, `libpg-query` 18.2.1, `oxc-parser` 0.153.0). A consumer on another `pg` or `zod` would get a second copy. Now `^<catalog version>` (a catalog entry that already has a range keeps it); the lockstep `@pg-txmode/*` dependencies stay exact. The workspace catalog still pins what this repository tests.
   8. **`bin` ships as `cli.mjs`, not `./cli.mjs`.** `npm publish ./dist` printed `npm warn publish "bin[pg-txmode-lint]" script name cli.mjs was invalid and removed` for the `./` form (the tarball kept the bin; the registry document had it normalised). The generated manifest now uses npm's own form and the warning is gone.
   9. **The `check` job also prints `dist-tags`** of each package (public reads) and its tag follows the `Publish` step's rule.
+- **2026-10-30, after the merge of PR #11 (issue #12, lows 1 and 2; the version PR).**
+  10. **No claim about `latest` that was not observed.** Revisions 5 said the intended state is no `latest` until a stable release. On Verdaccio, removing `latest` re-created it on the newest alpha; npm's behaviour is not observed (`npm view @pg-txmode/core` is E404 today: nothing exists to observe). Read: after the first publish the operator runs `npm view @pg-txmode/<name> dist-tags` (the `check` mode prints the same) and decides; until then an untagged install, `npm i @pg-txmode/core`, may get `0.1.0-alpha.0` (not the newest alpha), and `@alpha` always gets the newest. The README says so.
+  11. **The `Publish` step prints what `npm view` says and publishes only on E404.** It used to treat every `npm view` failure as "not on the registry". Now: success = skipped; output with `E404` = publish; anything else (network, registry error, 5xx) prints the output and stops with nothing published for that package. Real npm answers E404 for a missing package and for a missing version of an existing one (`npm view zod@9.9.9 version` and `npm view @pg-txmode/nonexistent-xyz@1.0.0 version`, both exit 1, evidence section 7). Tests (stubs): a non-E404 error stops and prints it; a refused name (E403 on `effect` after `core`) stops the set, and a re-run skips `core` and publishes `effect`, `lint`, `pg`.
+  12. **The version commit** (`changeset version`): `0.1.0-alpha.0` for the four packages, a `CHANGELOG.md` each, `.changeset/pre.json` lists the consumed changeset. No publish; the hold stays.

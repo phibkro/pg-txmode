@@ -567,6 +567,8 @@ describe("the publish step", () => {
     readonly existing: readonly string[];
     readonly npmExit?: number;
     readonly pre?: string | undefined;
+    readonly refuse?: string;
+    readonly viewError?: string;
   }): {
     readonly exitCode: number;
     readonly log: readonly string[];
@@ -594,7 +596,19 @@ describe("the publish step", () => {
       );
       writeFixture(
         path.join(bin, "npm"),
-        '#!/bin/sh\necho "$*" >> "$LOG"\nif [ "$1" = view ]; then\n  case " $EXISTING " in *" $2 "*) exit 0;; esac\n  exit 1\nfi\nexit "${NPM_EXIT:-0}"\n',
+        [
+          "#!/bin/sh",
+          'echo "$*" >> "$LOG"',
+          'if [ "$1" = view ]; then',
+          '  case " $EXISTING " in *" $2 "*) exit 0;; esac',
+          '  if [ -n "$VIEW_ERROR" ]; then echo "$VIEW_ERROR" >&2; exit 1; fi',
+          '  echo "npm error code E404" >&2',
+          "  exit 1",
+          "fi",
+          'if [ -n "$REFUSE" ] && [ "$2" = "$REFUSE" ]; then echo "npm error code E403" >&2; exit 1; fi',
+          'exit "${NPM_EXIT:-0}"',
+          "",
+        ].join("\n"),
         0o755
       );
 
@@ -614,6 +628,8 @@ describe("the publish step", () => {
           LOG: log,
           NPM_EXIT: String(options.npmExit ?? 0),
           PATH: `${bin}:${process.env.PATH ?? ""}`,
+          REFUSE: options.refuse ?? "",
+          VIEW_ERROR: options.viewError ?? "",
         },
         dir
       );
@@ -688,6 +704,45 @@ describe("the publish step", () => {
     expect(exitCode).not.toBe(0);
     expect(published(log)).toStrictEqual([
       "publish ./packages/core/dist --tag alpha --access public",
+    ]);
+  });
+
+  test("a view error that is not E404 stops the step and is printed; nothing is published for it (control)", () => {
+    const { exitCode, log, stdout } = runPublish({
+      existing: [],
+      pre: alpha,
+      viewError: "npm error code ENOTFOUND registry unreachable",
+    });
+
+    expect(exitCode).not.toBe(0);
+    expect(stdout).toContain("not E404");
+    expect(stdout).toContain("ENOTFOUND registry unreachable");
+    expect(published(log)).toStrictEqual([]);
+  });
+
+  test("a refused name (E403) stops the set, and a re-run skips what was published and publishes the rest", () => {
+    const first = runPublish({
+      existing: [],
+      pre: alpha,
+      refuse: "./packages/effect/dist",
+    });
+
+    expect(first.exitCode).not.toBe(0);
+    expect(published(first.log)).toStrictEqual([
+      "publish ./packages/core/dist --tag alpha --access public",
+      "publish ./packages/effect/dist --tag alpha --access public",
+    ]);
+
+    const second = runPublish({
+      existing: ["@pg-txmode/core@0.1.0-alpha.1"],
+      pre: alpha,
+    });
+
+    expect(second.exitCode).toBe(0);
+    expect(published(second.log)).toStrictEqual([
+      "publish ./packages/effect/dist --tag alpha --access public",
+      "publish ./packages/lint/dist --tag alpha --access public",
+      "publish ./packages/pg/dist --tag alpha --access public",
     ]);
   });
 

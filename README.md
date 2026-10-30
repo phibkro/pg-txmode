@@ -93,7 +93,7 @@ devenv up                          # a PgBouncer and PostgreSQL on fixed ports f
 
 ## Release
 
-Not published yet. When it is, the packages `@pg-txmode/core`, `@pg-txmode/pg`, `@pg-txmode/effect` and `@pg-txmode/lint` are versioned together (`0.1.0-alpha.N`, dist-tag `alpha`) and installed with `npm i @pg-txmode/core@alpha`. `devenv shell -- bun run release:stage` builds `packages/<name>/dist`, the directory that is published ([spec 0006](docs/specs/0006-release.md)). The harness is not published.
+Not published yet. When it is, the packages `@pg-txmode/core`, `@pg-txmode/pg`, `@pg-txmode/effect` and `@pg-txmode/lint` are versioned together (`0.1.0-alpha.N`, dist-tag `alpha`) and installed with `npm i @pg-txmode/core@alpha`: `@alpha` always installs the newest alpha. A plain `npm i @pg-txmode/core` (the `latest` tag) is not managed: the registry sets `latest` on a package's first publish and nothing here moves it, so it may install `0.1.0-alpha.0` and not the newest alpha. `npm view @pg-txmode/core dist-tags` shows both. `devenv shell -- bun run release:stage` builds `packages/<name>/dist`, the directory that is published ([spec 0006](docs/specs/0006-release.md)). The harness is not published.
 
 ## Roadmap
 
