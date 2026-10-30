@@ -1,6 +1,6 @@
 {
   "name": "@pg-txmode/harness",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Test tool of pg-txmode: starts a throwaway PostgreSQL and a PgBouncer (transaction mode, Neon's settings) from PATH, runs the probe matrix against the catalogue, and records statements.",
   "license": "Apache-2.0",
   "bin": {
