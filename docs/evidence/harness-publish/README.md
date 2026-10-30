@@ -11,8 +11,8 @@ cd /tmp && npm publish <worktree>/packages/harness/dist --dry-run --tag alpha --
 
 ```text
 Staged @pg-txmode/core, @pg-txmode/effect, @pg-txmode/harness, @pg-txmode/lint, @pg-txmode/pg.
-Tarball Contents: LICENSE 11.4kB  NOTICE 127B  README.md 2.8kB  cli.d.mts 9B  cli.mjs 2.3kB  index.d.mts 8.2kB  index.mjs 1.9kB  matrix-DzGHFYbn.mjs 40.9kB  package.json 878B
-package size: 20.9 kB   unpacked size: 68.4 kB   total files: 9   (no npm warn)
+Tarball Contents: CHANGELOG.md 385B  LICENSE 11.4kB  NOTICE 127B  README.md 4.2kB  cli.d.mts 9B  cli.mjs 2.3kB  index.d.mts 8.2kB  index.mjs 1.9kB  matrix-D053EUrv.mjs 42.9kB  package.json 886B
+package size: 22.3 kB   unpacked size: 72.1 kB   total files: 10   (no npm warn; measured on the head of spec 0008, after release:stage; the first figures, 20.9 kB and 68.4 kB, were of the first commit of #15, before the watchdog)
 ```
 
 `cli.mjs` starts with `#!/usr/bin/env node`; the manifest has `"bin": {"pg-txmode-harness": "cli.mjs"}`, dependencies `@pg-txmode/core`, `@types/pg`, `pg`.

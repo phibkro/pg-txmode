@@ -59,7 +59,7 @@ What the lockstep publish does to dist-tags, with the `Publish` step of spec 000
 | F-h1 | The published set is the five packages, none private; the fixed group equals it | `release.test.ts` | (unchanged rule) the harness removed from the group fails it |
 | F-h2 | A declaration file's `declare module "pkg"` needs the types of `pkg` to ship | `release:stage` (`importFindings`), unit test | `@types/pg` moved to `devDependencies` of the harness on the real tree: `@pg-txmode/harness: index.d.mts imports pg, and its types @types/pg are a devDependency, which does not ship`, exit 1 |
 | F-h3 | The tarball installs, imports, starts a stack and type-checks in a project that is not this repository | evidence section 2 (needs the PostgreSQL and PgBouncer binaries; not a gate) | before the `@types/pg` fix: `tsc` exit 1, TS2665 |
-| F-h4 | The stage copies a package README | `release:stage` listing (`README.md` of 2.8 kB in the harness tarball, the generated 250 B in the others) | n/a |
+| F-h4 | The stage copies a package README | `release:stage` listing (`README.md` of 4.2 kB in the harness tarball (2.8 kB at the first commit of #15), the generated 250 B in the others) | n/a |
 | F-h5 | A published package may not depend on a private one | `release.test.ts` | a synthetic private package (fixture) |
 | F-h6 | A parent that dies before `stop()` leaves no server and no directory | `orphans.test.ts` (parent killed with `SIGKILL`, `SIGTERM`, `SIGINT`; its own `TMPDIR`) | the watchdog disabled: all three fail |
 | F-h7 | The README exists and names every binary spawned, the non-durable settings and the cleanup | `release.test.ts` | the generated README names none (fixture) |

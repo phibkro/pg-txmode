@@ -191,7 +191,7 @@ jobs:
               version=$(node -p "require(\"./$manifest\").version")
               if out=$(npm view "$name@$version" version 2>&1); then
                 echo "$name@$version is on the registry: skipped"
-              elif printf "%s" "$out" | grep -q "E404"; then
+              elif printf "%s\n" "$out" | grep -q "^npm error code E404"; then
                 echo "$name@$version is not on the registry: publishing"
                 npm publish "./$dir" --tag "$tag" --access public
               else

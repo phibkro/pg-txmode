@@ -73,7 +73,7 @@ const freePort = async (): Promise<number> => {
 };
 
 /** A running child with its collected output and a way to stop it and wait for the exit. */
-interface Running {
+export interface Running {
   readonly child: ChildProcess;
   readonly output: () => string;
   readonly exited: Promise<number | null>;
@@ -83,16 +83,54 @@ interface Running {
 /**
  * Runs when the process that started a server has gone (any signal, `SIGKILL` included): kills the server if it is still
  * alive and removes its directory. `$1` is the starting process, `$2` the server, `$3` the directory. It ends as soon as
- * either process is gone, so a normal `stop()` leaves it for at most one second.
+ * either process is gone, so a normal `stop()` leaves it for at most one second. The first line exits with
+ * `missingTool` when `sleep` or `rm` is not on `PATH` (without `sleep` the loop would spin on a core).
  */
-const watchdog = `while kill -0 "$1" 2>/dev/null && kill -0 "$2" 2>/dev/null; do sleep 1; done
+const missingTool = 127;
+
+const watchdog = `command -v sleep >/dev/null 2>&1 && command -v rm >/dev/null 2>&1 || exit ${missingTool}
+while kill -0 "$1" 2>/dev/null && kill -0 "$2" 2>/dev/null; do sleep 1; done
 if kill -0 "$2" 2>/dev/null; then kill -KILL "$2" 2>/dev/null; sleep 1; rm -rf "$3"; fi`;
+
+/**
+ * Starts the watchdog of `child`. A watchdog that cannot run (no `sh`, or no `sleep` or `rm`) is not a server without
+ * cleanup: the server is killed and the reason goes into the output, so the start fails naming `sh` instead of leaving
+ * an orphan behind a crash.
+ */
+const watch = (
+  child: ChildProcess,
+  dir: string,
+  note: (text: string) => void
+): void => {
+  const refuse = (reason: string): void => {
+    note(
+      `the cleanup watchdog (sh) could not run: ${reason}; the server was killed\n`
+    );
+    child.kill("SIGKILL");
+  };
+
+  const guard = spawn(
+    "sh",
+    ["-c", watchdog, "sh", String(process.pid), String(child.pid), dir],
+    { detached: true, stdio: "ignore" }
+  );
+
+  guard.once("error", (error) => {
+    refuse(`sh: ${error.message}`);
+  });
+  guard.once("exit", (code) => {
+    if (code === missingTool) {
+      refuse("sleep or rm is not on PATH");
+    }
+  });
+  guard.unref();
+};
 
 /**
  * `dir`, when given, is the directory of a server: a watchdog (a detached `sh`) then cleans up after a parent that dies
  * without calling `stop()`. Nothing in Node can catch `SIGKILL`, so the cleanup cannot live in this process.
  */
-const run = (
+export const run = (
   command: string,
   args: readonly string[],
   dir?: string
@@ -104,11 +142,9 @@ const run = (
   });
 
   if (dir !== undefined && child.pid !== undefined) {
-    spawn(
-      "sh",
-      ["-c", watchdog, "sh", String(process.pid), String(child.pid), dir],
-      { detached: true, stdio: "ignore" }
-    ).unref();
+    watch(child, dir, (text) => {
+      chunks.push(text);
+    });
   }
 
   const { promise: exited, resolve } = Promise.withResolvers<number | null>();
@@ -148,13 +184,13 @@ const stopAndRemove =
   };
 
 /** Polls until a client can connect to `url`; fails with the child's last output when it exits or never answers. */
-const waitUntilAccepting = async (
+export const waitUntilAccepting = async (
   url: string,
   running: Running,
   what: string,
   attempt = 0
 ): Promise<void> => {
-  if (running.child.exitCode !== null) {
+  if (running.child.exitCode !== null || running.child.signalCode !== null) {
     throw new Error(`${what} exited early:\n${tail(running)}`);
   }
 
