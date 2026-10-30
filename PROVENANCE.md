@@ -62,7 +62,7 @@ Source: [`tsukuri-labs/tsukuri`](https://github.com/tsukuri-labs/tsukuri) (the r
 
 | File | Source (tsukuri `d0c5a1d`) | Deviation |
 | --- | --- | --- |
-| `.github/workflows/release.yml` | same path | package names and scope; the `check` job gains a checkout, the stage step and a `--dry-run` publish of each package (tsukuri's `check` needs none); the tag of the dry run is read from `.changeset/pre.json`; the hold text and the pins are the same |
+| `.github/workflows/release.yml` | same path | package names and scope; the `check` job gains a checkout, the stage step, a `--dry-run` publish of each package (tsukuri's `check` needs none) and a `dist-tags` read; the `publish` job does **not** call `changeset publish` (it tags a second alpha `latest`; spec 0006, Revisions 5): its `Publish` step runs `npm publish ./<dist> --tag <pre-mode tag>` per package and skips what the registry has; the hold text and the pins are the same |
 | `.github/release-hold` | same path | the reason (the first publish is the operator's decision; tsukuri's was a name clearance) |
 | `secretspec.toml` | same path | project name and the description; `prompt = true` dropped (it needs SecretSpec 0.19 and is ignored before it, and nothing here uses it) |
 | `tools/quality/releaseWorkflow.ts`, `test/releaseWorkflow.test.ts` | `tools/quality/releaseWorkflow.ts`, `tools/quality/test/releaseWorkflow.test.ts` | **ported to plain TypeScript** (`zod`, `yaml`, `smol-toml`; Vitest): the same rules and controls; a publish command with `--dry-run` is not a publish, a script is split at `;`, `&&`, `\|\|` and `\|`, with controls for both |
@@ -73,7 +73,7 @@ Source: [`tsukuri-labs/tsukuri`](https://github.com/tsukuri-labs/tsukuri) (the r
 
 | Package | Licence | Used for |
 | --- | --- | --- |
-| `@changesets/cli` 3.0.3 | MIT | versioning and `changeset publish` (root, build time; the published packages do not depend on it) |
+| `@changesets/cli` 3.0.3 | MIT | versioning (`changeset version`; root, build time; the published packages do not depend on it) |
 | `yaml` 2.9.1 | ISC | parsing the workflow files in the release rules (`tools/quality`) |
 | `smol-toml` 1.9.1 | BSD-3-Clause | parsing `secretspec.toml` in the release rules (`tools/quality`; already in the lock through `knip`) |
 

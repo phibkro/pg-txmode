@@ -97,7 +97,7 @@ const rewriteOne = (name: string, range: string, context: Context): Rewrite => {
 
     return version === undefined
       ? { problem: `${name} is catalog: but not in the catalog` }
-      : { value: version };
+      : { value: /^\d/u.test(version) ? `^${version}` : version };
   }
 
   return range.startsWith("workspace:") || range.startsWith("catalog:")
@@ -253,7 +253,8 @@ export const releaseManifest = (
     shipped.bin = Object.fromEntries(
       Object.entries(manifest.bin).map(([name, source]) => [
         name,
-        `./${builtFile(source)}`,
+        // npm stores `bin` without the leading `./` and warns that it "corrected" a manifest that has one.
+        builtFile(source),
       ])
     );
   }

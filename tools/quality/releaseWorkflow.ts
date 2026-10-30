@@ -134,9 +134,26 @@ const tokenExpression = (name: string): string => `\${{ secrets.${name} }}`;
 const literalToken =
   /\bnpm_[A-Za-z0-9]{20,}|_authToken\s*=\s*(?!\$\{NODE_AUTH_TOKEN\})\S/u;
 
-/** What a step that holds the token must not run: it would print the token, or trace it. */
-const exposing =
-  /NODE_AUTH_TOKEN|\bprintenv\b|\bset\s+-\w*x|(?:^|\n)\s*env\s*(?:\||\n|$)/u;
+/**
+ * What a step that holds the token must not run: a command that prints the environment or traces it. A deny-list of the
+ * usual printers (the name, `printenv`, bare `env`, `export`, `declare`/`typeset`, a bare `set`, `compgen -e`, the
+ * process environment, `set -x`); it is a guard against a slip, not a proof that nothing can print the token.
+ */
+const exposing = new RegExp(
+  [
+    "NODE_AUTH_TOKEN",
+    String.raw`\bprintenv\b`,
+    String.raw`\bset\s+-\w*x`,
+    String.raw`(?:^|\n|;|&&|\|)\s*env\s*(?:\||;|\n|$)`,
+    String.raw`(?:^|\n|;|&&|\|)\s*export\s*(?:-\w+\s*)*(?:\||;|\n|$)`,
+    String.raw`\b(?:declare|typeset)\s+-\w*[xp]`,
+    String.raw`(?:^|\n|;|&&|\|)\s*set\s*(?:\||;|\n|$)`,
+    String.raw`\bcompgen\s+-\w*e`,
+    String.raw`/proc/[^\s]*environ`,
+    String.raw`\bprocess\.env\b`,
+  ].join("|"),
+  "u"
+);
 
 const stepLabel = (step: Step): string => step.name ?? "(unnamed)";
 
@@ -198,12 +215,17 @@ const jobFindings = (
     );
   }
 
-  if (
-    steps.some((step) => mentions(step.env)) &&
-    job.environment !== releaseEnvironment
-  ) {
+  const tokenSteps = steps.filter((step) => mentions(step.env));
+
+  if (tokenSteps.length > 0 && job.environment !== releaseEnvironment) {
     findings.push(
       `${where} reads the token outside the ${releaseEnvironment} environment, so a repository secret would serve it`
+    );
+  }
+
+  if (tokenSteps.length > 1) {
+    findings.push(
+      `${where} reads the token in ${tokenSteps.length} steps; it may be read in one`
     );
   }
 
@@ -328,19 +350,60 @@ const publishCommand =
   /\bchangeset\s+publish\b|\bnpm\s+(?:stage\s+)?publish\b|\bbun\s+publish\b|\bpnpm\s+publish\b|\byarn\s+npm\s+publish\b/u;
 
 /**
- * The simple commands of a script: backslash continuations are joined (a flag on the next line belongs to its command),
- * then each line is split at `;`, `&&`, `||` and `|`, so a `--dry-run` in one command cannot excuse a publish in another.
+ * The script without shell comments. A `#` outside quotes, at the start of a line or after whitespace, starts a comment
+ * that runs to the end of the line (a `#` inside quotes is text, and stays). Quote state carries across lines. Without
+ * this a trailing `# --dry-run` would excuse a publish.
+ */
+const withoutComments = (script: string): string => {
+  let quote: string | undefined;
+  let comment = false;
+  let previous = "\n";
+  let out = "";
+
+  for (const char of script) {
+    if (comment) {
+      if (char === "\n") {
+        comment = false;
+        out += char;
+      }
+    } else if (quote === undefined && char === "#" && /\s/u.test(previous)) {
+      comment = true;
+    } else {
+      if (char === quote) {
+        quote = undefined;
+      } else if (quote === undefined && (char === "'" || char === '"')) {
+        quote = char;
+      }
+
+      out += char;
+    }
+
+    previous = char;
+  }
+
+  return out;
+};
+
+/**
+ * The simple commands of a script: comments are dropped, backslash continuations are joined (a flag on the next line
+ * belongs to its command), then each line is split at `;`, `&&`, `||` and `|`, so a `--dry-run` in one command cannot
+ * excuse a publish in another.
  */
 const commands = (script: string): readonly string[] =>
-  script
+  withoutComments(script)
     .replaceAll(/\\\r?\n\s*/gu, " ")
     .split(/\r?\n/u)
     .flatMap((line) => line.split(/&&|\|\||;|\|/u));
 
+/** A bare `--dry-run`: not `--dry-run=false`, `--dry-run false`, `--no-dry-run`, and not one a later flag undoes. */
+const dryRun = (command: string): boolean =>
+  /(?:^|\s)--dry-run(?=\s|$)/u.test(command) &&
+  !/--dry-run=|--no-dry-run|--dry-run\s+(?:false|0|no)\b/u.test(command);
+
 /** True when a script runs a publish command that is not a dry run (`--dry-run` publishes nothing). */
 const publishes = (script: string | undefined): boolean =>
   commands(script ?? "").some(
-    (command) => publishCommand.test(command) && !/--dry-run\b/u.test(command)
+    (command) => publishCommand.test(command) && !dryRun(command)
   );
 
 const DispatchSchema = z.object({
@@ -509,6 +572,19 @@ export const holdScript = (file: WorkflowFile): string | undefined => {
     ? Object.values(parsed.value.jobs)
         .flatMap((job) => job.steps ?? [])
         .find(holdsRelease)?.run
+    : undefined;
+};
+
+/** The script of the step called `name` in the job `job`, or `undefined` (a test runs it with stubs for `devenv` and `npm`). */
+export const stepScript = (
+  file: WorkflowFile,
+  job: string,
+  name: string
+): string | undefined => {
+  const parsed = parseWorkflow(file);
+
+  return parsed.ok
+    ? parsed.value.jobs[job]?.steps?.find((step) => step.name === name)?.run
     : undefined;
 };
 

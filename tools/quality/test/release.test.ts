@@ -170,7 +170,7 @@ describe("the manifest that ships", () => {
     if (staged.ok) {
       expect(staged.manifest.dependencies).toStrictEqual({
         "@pg-txmode/core": context.versions.get("@pg-txmode/core"),
-        zod: root.catalog.zod,
+        zod: `^${root.catalog.zod}`,
       });
       expect(
         Object.keys(staged.manifest.exports["./cancel"] ?? {})
@@ -179,6 +179,32 @@ describe("the manifest that ships", () => {
         default: "./cancel.mjs",
         types: "./cancel.d.mts",
       });
+    }
+  });
+
+  test("ships the bin as npm stores it, and library ranges as carets with the lockstep packages exact", () => {
+    const lint = published.find(
+      (entry) => entry.manifest.name === "@pg-txmode/lint"
+    );
+
+    const staged = releaseManifest(lint ?? fixture({}), root, context);
+
+    expect(staged.ok).toBe(true);
+
+    if (staged.ok) {
+      expect(staged.manifest.bin).toStrictEqual({
+        "pg-txmode-lint": "cli.mjs",
+      });
+
+      for (const [name, range] of Object.entries(
+        staged.manifest.dependencies ?? {}
+      )) {
+        expect(range).toBe(
+          name.startsWith("@pg-txmode/")
+            ? context.versions.get(name)
+            : `^${root.catalog[name]}`
+        );
+      }
     }
   });
 

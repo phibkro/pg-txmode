@@ -3,7 +3,7 @@
 // rule has a control that breaks it in a fixture, and each runs on the real files.
 // Provenance: ported from tsukuri-labs/tsukuri spec 0009 (tools/quality/test/releaseWorkflow.test.ts, PR #29, merge
 // commit d0c5a1de330200302edbad58784f351b09eeb4f8), from Effect's test API to Vitest. See PROVENANCE.md.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { describe, expect, test } from "vite-plus/test";
@@ -15,6 +15,7 @@ import {
   holdScript,
   modeFindings,
   referencedSecrets,
+  stepScript,
   tokenFindings,
 } from "../releaseWorkflow.ts";
 import type { WorkflowFile } from "../releaseWorkflow.ts";
@@ -48,6 +49,7 @@ const publishCondition =
 interface Changes {
   readonly beforeHold?: string;
   readonly checkRun?: string;
+  readonly checkSteps?: string;
   readonly environment?: string;
   readonly holdExtra?: string;
   readonly jobEnv?: string;
@@ -92,6 +94,7 @@ ${changes.needs ?? ""}
         env:
           ${changes.variable ?? "NODE_AUTH_TOKEN"}: ${expression(changes.secret ?? "NPM_TOKEN")}
         run: ${changes.checkRun ?? "npm whoami"}
+${changes.checkSteps ?? ""}
   publish:
     if: ${changes.publishIf ?? publishCondition}
     runs-on: ubuntu-latest
@@ -252,6 +255,51 @@ describe("the npm token", () => {
       )
     ).toBe(true);
   });
+
+  test("fails a second step that reads the token in a job (control)", () => {
+    const second =
+      "      - name: Second\n        env:\n          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}\n        run: npm whoami\n";
+
+    expect(
+      mentions("reads the token in 2 steps")(
+        tokenFindings([release({ checkSteps: second })], secretspec)
+      )
+    ).toBe(true);
+    expect(tokenFindings([release({})], secretspec)).toStrictEqual([]);
+  });
+
+  test("fails the printers a slip would reach for, and passes ordinary shell (controls)", () => {
+    const printing = mentions("can print it");
+
+    for (const checkRun of [
+      "export -p",
+      "export",
+      "declare -x",
+      "declare -p",
+      "typeset -x",
+      "set",
+      "compgen -e",
+      "cat /proc/self/environ",
+      "node -e 'console.log(process.env)'",
+      "npm whoami && env",
+      "npm whoami; export -p | sort",
+    ]) {
+      expect(printing(tokenFindings([release({ checkRun })], secretspec))).toBe(
+        true
+      );
+    }
+
+    for (const checkRun of [
+      "set -eu",
+      "export FOO=bar",
+      "npm whoami",
+      "devenv shell -- bash -c 'npm view x'",
+    ]) {
+      expect(printing(tokenFindings([release({ checkRun })], secretspec))).toBe(
+        false
+      );
+    }
+  });
 });
 
 describe("the release mode", () => {
@@ -343,6 +391,36 @@ describe("the release mode", () => {
         )
       )
     ).toBe(true);
+  });
+
+  test("a publish is not excused by a flag that turns the dry run off, or by a comment (controls)", () => {
+    const reaches = mentions('with mode "check"');
+
+    for (const checkRun of [
+      'npm publish "$dist" --dry-run=false',
+      'npm publish "$dist" --dry-run false',
+      'npm publish "$dist" --dry-run --no-dry-run',
+      'npm publish "$dist" --no-dry-run',
+      'npm publish "$dist" # --dry-run',
+      'echo "#"; npm publish "$dist" # --dry-run',
+      "npm publish ./dist --dry-run=0",
+    ]) {
+      expect(reaches(modeFindings(release({ checkRun })))).toBe(true);
+    }
+
+    expect(
+      modeFindings(
+        release({ checkRun: 'npm publish "$dist" --dry-run # a dry run' })
+      )
+    ).toStrictEqual([]);
+    expect(
+      modeFindings(
+        release({
+          checkRun:
+            "|\n          # npm publish ./dist\n          npm view x --dry-run",
+        })
+      )
+    ).toStrictEqual([]);
   });
 
   test("fails when the default is not check, or no job publishes in publish mode (controls)", () => {
@@ -475,5 +553,154 @@ describe("the release hold", () => {
         );
       });
     });
+  });
+});
+
+const published = (log: readonly string[]): readonly string[] =>
+  log.filter((line) => line.startsWith("publish "));
+
+describe("the publish step", () => {
+  const releasePackages = ["core", "effect", "lint", "pg"];
+
+  /** Runs the real `Publish` step in a scratch repository, with `devenv` and `npm` replaced by stubs that log. */
+  const runPublish = (options: {
+    readonly existing: readonly string[];
+    readonly npmExit?: number;
+    readonly pre?: string | undefined;
+  }): {
+    readonly exitCode: number;
+    readonly log: readonly string[];
+    readonly stdout: string;
+  } =>
+    withScratch((dir) => {
+      const bin = path.join(dir, "bin");
+      const log = path.join(dir, "npm.log");
+
+      for (const name of releasePackages) {
+        writeFixture(
+          path.join(dir, "packages", name, "dist", "package.json"),
+          `${JSON.stringify({ name: `@pg-txmode/${name}`, version: "0.1.0-alpha.1" })}\n`
+        );
+      }
+
+      if (options.pre !== undefined) {
+        writeFixture(path.join(dir, ".changeset", "pre.json"), options.pre);
+      }
+
+      writeFixture(
+        path.join(bin, "devenv"),
+        '#!/bin/sh\nshift 2\nexec "$@"\n',
+        0o755
+      );
+      writeFixture(
+        path.join(bin, "npm"),
+        '#!/bin/sh\necho "$*" >> "$LOG"\nif [ "$1" = view ]; then\n  case " $EXISTING " in *" $2 "*) exit 0;; esac\n  exit 1\nfi\nexit "${NPM_EXIT:-0}"\n',
+        0o755
+      );
+
+      const script = stepScript(
+        {
+          name: "release.yml",
+          text: readRepositoryFile(".github/workflows/release.yml"),
+        },
+        "publish",
+        "Publish"
+      );
+
+      const result = runBash(
+        ["-c", script ?? "exit 99"],
+        {
+          EXISTING: options.existing.join(" "),
+          LOG: log,
+          NPM_EXIT: String(options.npmExit ?? 0),
+          PATH: `${bin}:${process.env.PATH ?? ""}`,
+        },
+        dir
+      );
+
+      return {
+        ...result,
+        log: existsSync(log)
+          ? readFileSync(log, "utf-8")
+              .split("\n")
+              .filter((line) => line !== "")
+          : [],
+      };
+    });
+
+  const alpha = '{ "mode": "pre", "tag": "alpha" }';
+
+  test("publishes each package the registry lacks to the tag of pre mode, core first", () => {
+    const { exitCode, log } = runPublish({ existing: [], pre: alpha });
+
+    expect(exitCode).toBe(0);
+    expect(published(log)).toStrictEqual(
+      releasePackages.map(
+        (name) => `publish ./packages/${name}/dist --tag alpha --access public`
+      )
+    );
+  });
+
+  test("skips what the registry has, and publishes the rest (a re-run after a partial publish)", () => {
+    const { exitCode, log, stdout } = runPublish({
+      existing: [
+        "@pg-txmode/core@0.1.0-alpha.1",
+        "@pg-txmode/effect@0.1.0-alpha.1",
+      ],
+      pre: alpha,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain(
+      "@pg-txmode/core@0.1.0-alpha.1 is on the registry: skipped"
+    );
+    expect(published(log)).toStrictEqual([
+      "publish ./packages/lint/dist --tag alpha --access public",
+      "publish ./packages/pg/dist --tag alpha --access public",
+    ]);
+    expect(
+      published(
+        runPublish({
+          existing: releasePackages.map(
+            (name) => `@pg-txmode/${name}@0.1.0-alpha.1`
+          ),
+          pre: alpha,
+        }).log
+      )
+    ).toStrictEqual([]);
+  });
+
+  test("the tag is latest outside pre mode: no pre.json, or one that has left pre mode (controls)", () => {
+    for (const pre of [undefined, '{ "mode": "exit", "tag": "alpha" }']) {
+      expect(published(runPublish({ existing: [], pre }).log)[0]).toBe(
+        "publish ./packages/core/dist --tag latest --access public"
+      );
+    }
+  });
+
+  test("stops at the first failed publish (control)", () => {
+    const { exitCode, log } = runPublish({
+      existing: [],
+      npmExit: 1,
+      pre: alpha,
+    });
+
+    expect(exitCode).not.toBe(0);
+    expect(published(log)).toStrictEqual([
+      "publish ./packages/core/dist --tag alpha --access public",
+    ]);
+  });
+
+  test("does not use changeset publish, which tags a second alpha latest (control)", () => {
+    expect(
+      stepScript(
+        {
+          name: "release.yml",
+          text: readRepositoryFile(".github/workflows/release.yml"),
+        },
+        "publish",
+        "Publish"
+      )
+    ).not.toMatch(/changeset\s+publish/u);
   });
 });

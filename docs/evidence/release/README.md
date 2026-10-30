@@ -65,7 +65,7 @@ tsc -p .                             # TypeScript 7 against the shipped .d.mts
 ```
 
 ```text
-added 26 packages in 3s
+added 29 packages in 3s
 core 45 exports
 cancel 1 exports
 pg 3 exports
@@ -95,39 +95,66 @@ after:  added 29 packages in 3s   (the packages re-packed; "@types/pg":"8.23.1" 
         tsc -p .   exit 0
 ```
 
-## 4. The version commit and `changeset publish`, rehearsed against a local registry
+## 4. Versioning and publishing, rehearsed twice against a local registry
 
-In a copy of the tree (`/tmp/pgtx-rehearse`): one changeset file for `@pg-txmode/core` (minor), then the steps of the Release workflow's `publish` job, with a Verdaccio user's token in `NODE_AUTH_TOKEN` (116 characters, never printed) and `NPM_CONFIG_USERCONFIG` pointing at a file that holds `//127.0.0.1:4873/:_authToken=${NODE_AUTH_TOKEN}`.
+Verdaccio 6.11.1 on 127.0.0.1:4873 with a throwaway user; a 116-character token in `NODE_AUTH_TOKEN` (never printed); `NPM_CONFIG_USERCONFIG` points at a file that holds `//127.0.0.1:4873/:_authToken=${NODE_AUTH_TOKEN}`. Each scenario ran in a fresh copy of the tree at the head (`/tmp/pgtx-rh`), with a fresh registry. Two releases: a changeset file (`@pg-txmode/core` minor, then patch), `changeset version`, `bun run release:stage`, then the publish.
+
+### A. `changeset publish`, twice (the defect of round 1, reproduced)
 
 ```sh
-devenv shell -- bunx changeset version        # 0.1.0-alpha.0 for the four published packages; harness stays 0.0.0
-devenv shell -- bun install --frozen-lockfile # passes: "Checked 324 installs across 474 packages (no changes)"
-devenv shell -- bun run release:stage
-jq 'del(.devEngines)' package.json > package.json.release && mv package.json.release package.json
-NPM_CONFIG_USERCONFIG=/tmp/verdaccio/npmrc devenv shell -- bunx changeset publish --no-git-tag
+jq 'del(.devEngines)' package.json > package.json.r && mv package.json.r package.json
+bunx changeset version; bun run release:stage; bunx changeset publish --no-git-tag     # release 1: 0.1.0-alpha.0
+# a second changeset file, then the same three commands                                 # release 2: 0.1.0-alpha.1
+curl -s http://127.0.0.1:4873/@pg-txmode%2f<name> | jq -c '."dist-tags"'
 ```
 
 ```text
-version: 0.1.0-alpha.0 (core, effect, lint, pg), 0.0.0 (harness)
-dist/package.json: "@pg-txmode/core": "0.1.0-alpha.0" in effect, lint and pg
-
-You are in prerelease mode, so packages will be published to the alpha npm tag,
-except for packages that have not had normal releases, which will be published to latest.
-Package @pg-txmode/core was not found in the registry.   (and pg, lint, effect)
-◇  Successfully published:
-@pg-txmode/core@0.1.0-alpha.0
-@pg-txmode/effect@0.1.0-alpha.0
-@pg-txmode/lint@0.1.0-alpha.0
-@pg-txmode/pg@0.1.0-alpha.0
+release 2:  @pg-txmode/pg@0.1.0-alpha.1
+            └ will be published to latest rather than alpha as it will be its first published version.
+core    {"latest":"0.1.0-alpha.1","alpha":"0.1.0-alpha.0"}
+pg      {"latest":"0.1.0-alpha.1","alpha":"0.1.0-alpha.0"}
+effect  {"latest":"0.1.0-alpha.1","alpha":"0.1.0-alpha.0"}
+lint    {"latest":"0.1.0-alpha.1","alpha":"0.1.0-alpha.0"}
 ```
 
-Dist-tags in the local registry afterwards (`curl http://127.0.0.1:4873/@pg-txmode%2f<name> | jq '."dist-tags"'`): `{"latest":"0.1.0-alpha.0","alpha":"0.1.0-alpha.0"}` for all four. Verdaccio sets `latest` on a first publish; what npm does is not observed (spec 0006, risks).
+After release 2 the `alpha` tag is one release behind: `npm i @pg-txmode/core@alpha` would install the first alpha. (The reviewer also reports that `changeset publish --tag alpha` is refused in pre mode: "Releasing under custom tag is not allowed in pre mode!".)
 
-A second `changeset publish`: `No unpublished projects to publish.`
+### B. The `Publish` step of `release.yml`, twice and once more
 
-A fresh project with `registry=http://127.0.0.1:4873/` installed `@pg-txmode/{core,pg,lint,effect}@alpha effect@4.1.0 @effect/sql-pg@4.1.0` (`added 26 packages in 3s`); `npm ls @pg-txmode/core` shows `0.1.0-alpha.0` once, deduped under the three dependents; the import check and `pg-txmode-lint q.sql` give the output of section 3.
+The step's `run` text, read from the workflow with the `yaml` package into `/tmp/publish-step.sh`, run as it is (it calls `devenv shell -- bash -c '...'`):
 
-The rehearsal tree was copied before `@types/pg` became a dependency of `@pg-txmode/pg` (section 3, "Found by this check"); the version, stage and publish steps do not depend on it.
+```sh
+bunx changeset version; bun run release:stage; bash /tmp/publish-step.sh    # release 1: 0.1.0-alpha.0
+# second changeset file, same three commands                                # release 2: 0.1.0-alpha.1
+bash /tmp/publish-step.sh                                                   # re-run
+```
+
+```text
+release 1:  + @pg-txmode/core@0.1.0-alpha.0  + @pg-txmode/effect@0.1.0-alpha.0  + @pg-txmode/lint@0.1.0-alpha.0  + @pg-txmode/pg@0.1.0-alpha.0
+            (npm notice: "Publishing to http://127.0.0.1:4873/ with tag alpha and public access", for each)
+release 2:  + @pg-txmode/core@0.1.0-alpha.1  + ...effect, lint, pg ...@0.1.0-alpha.1   (tag alpha for each)
+re-run:     @pg-txmode/core@0.1.0-alpha.1 is on the registry: skipped   (effect, lint, pg likewise)
+core    {"latest":"0.1.0-alpha.0","alpha":"0.1.0-alpha.1"}
+pg      {"latest":"0.1.0-alpha.0","alpha":"0.1.0-alpha.1"}
+effect  {"latest":"0.1.0-alpha.0","alpha":"0.1.0-alpha.1"}
+lint    {"latest":"0.1.0-alpha.0","alpha":"0.1.0-alpha.1"}
+```
+
+`alpha` follows each release. `latest` stayed on `0.1.0-alpha.0`: the registry (Verdaccio) set it on the first publish, and nothing moves it (spec 0006, Revisions 5). npm's own behaviour on a first publish with `--tag alpha` is not observed.
+
+`changeset version` in both scenarios gave `0.1.0-alpha.0`, then `0.1.0-alpha.1`, to the four packages and left the harness at `0.0.0`. That `bun install --frozen-lockfile` passes after the version commit was checked in the first rehearsal of this PR (no change to manifests or lock since, except the dependency ranges of the shipped `dist`, which the lock does not see).
+
+A fresh project with `registry=http://127.0.0.1:4873/` (and an empty user config) installed `@pg-txmode/{core,pg,lint,effect}@alpha effect@4.1.0 @effect/sql-pg@4.1.0`:
+
+```text
+added 29 packages in 5s
+├── @pg-txmode/core@0.1.0-alpha.1
+├─┬ @pg-txmode/effect@0.1.0-alpha.1 ...
+1 statement(s) checked for hyperdrive: 1 error(s), 0 warning(s)            (pg-txmode-lint q.sql, SET search_path)
+{"@pg-txmode/core":"0.1.0-alpha.1","@types/pg":"^8.23.1","pg":"^8.23.1"}   (dependencies of the installed @pg-txmode/pg)
+```
+
+Also found here (spec 0006, Revisions 8): `npm publish ./dist` warned `"bin[pg-txmode-lint]" script name cli.mjs was invalid and removed` for `"bin": {"pg-txmode-lint": "./cli.mjs"}`; with `"cli.mjs"` there is no warning (`npm publish . --dry-run 2>&1 | grep -ci warn`: 3 before, 0 after). The tarball kept its bin either way (`pg-txmode-lint` linked to `cli.mjs` in a consumer).
 
 ## 5. GitHub state, read only
 
@@ -175,6 +202,19 @@ W4 check job in environment `staging`          FAIL the real files > secretspec.
 W5 hold step tests `release-hold-x`            FAIL the release hold > the real hold step refuses where the file exists ...   (the run with the file exits 0)
 W6 `default: publish`                          FAIL the real files > the release workflow's check mode cannot reach a publish, for any mode or ref
 restored                                       Tests  21 passed (21)
+```
+
+`cd tools/quality && devenv shell -- bunx vp test run test/releaseWorkflow.test.ts` after each edit of `.github/workflows/release.yml` (round 1 of PR #11; the gates were tightened first, Revisions 6):
+
+```text
+baseline                                              Tests  29 passed (29)
+V1 a second step of the check job reads the token     FAIL the real files > secretspec.toml and the workflows follow the token rule
+V2 `export -p` in the token step                      FAIL the real files > secretspec.toml and the workflows follow the token rule
+V3 `--dry-run=false` in the check job                 FAIL the real files > the release workflow's check mode cannot reach a publish, for any mode or ref
+V4 `npm publish ... # --dry-run` (a comment)          FAIL the real files > the release workflow's check mode cannot reach a publish ...   (and two more)
+V5 `bunx changeset publish` back in the Publish step  FAIL the publish step > ...   (5 failed: tag, skip, latest, stop at first failure, no changeset publish)
+V6 `--tag latest` hard-coded in the Publish step      FAIL the publish step > ...   (3 failed)
+restored                                              Tests  29 passed (29)
 ```
 
 ## What this does not show
