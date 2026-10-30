@@ -1,20 +1,13 @@
-// The release workflow rules of spec 0006: where the npm token may come from and go, that the `check` mode cannot
+// The release workflow rules of spec 0010: no stored credentials, that the `check` mode cannot
 // publish, and that the release hold stops the publish. Pure functions over file text, so tests run them on fixtures
 // (with a control for each way of leaking, drifting or reaching the publish) and on the real files. Plain TypeScript
 // (no Effect), like the rest of tools/.
 // Provenance: ported from tsukuri-labs/tsukuri (the reebeat repository, Apache-2.0) spec 0009, PR #29, merge commit
 // d0c5a1de330200302edbad58784f351b09eeb4f8 (tools/quality/releaseWorkflow.ts). Deviations: plain TypeScript with zod,
-// `yaml` and `smol-toml` instead of Effect Schema and its TOML codec; a publish command with `--dry-run` is not a
+// `yaml` instead of Effect Schema; a publish command with `--dry-run` is not a
 // publish (the `check` job dry-runs each package). See PROVENANCE.md.
-import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
-
-/** The one environment whose secret may carry the token. */
-const releaseEnvironment = "npm-release";
-
-/** The one step variable npm reads the token from (`//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`). */
-const tokenVariable = "NODE_AUTH_TOKEN";
 
 /** A workflow file: its name under `.github/workflows` and its text. */
 export interface WorkflowFile {
@@ -26,49 +19,6 @@ export interface WorkflowFile {
 export type Outcome<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly problem: string };
-
-const secretReference = /\bsecrets\.(?<name>[A-Za-z_][A-Za-z0-9_]*)/gu;
-
-/** `secrets.GITHUB_TOKEN` is GitHub's own per-run token, not a stored credential. */
-const builtIn = "GITHUB_TOKEN";
-
-/** The names of the secrets a text references (`secrets.NAME`), once each, without GitHub's own token. */
-export const referencedSecrets = (text: string): readonly string[] => [
-  ...new Set(
-    [...text.matchAll(secretReference)].flatMap(({ groups }) =>
-      groups?.name === undefined || groups.name === builtIn ? [] : [groups.name]
-    )
-  ),
-];
-
-const SecretspecSchema = z.object({
-  profiles: z.record(z.string(), z.record(z.string(), z.looseObject({}))),
-});
-
-/** The names of the secrets `secretspec.toml` declares, in every profile (`defaults` holds settings, not a secret). */
-export const declaredSecrets = (toml: string): Outcome<readonly string[]> => {
-  try {
-    const decoded = SecretspecSchema.safeParse(parseToml(toml));
-
-    return decoded.success
-      ? {
-          ok: true,
-          value: [
-            ...new Set(
-              Object.values(decoded.data.profiles).flatMap((profile) =>
-                Object.keys(profile).filter((name) => name !== "defaults")
-              )
-            ),
-          ],
-        }
-      : { ok: false, problem: "secretspec.toml has no [profiles.*] table" };
-  } catch (error) {
-    return {
-      ok: false,
-      problem: `secretspec.toml is not valid TOML: ${error instanceof Error ? error.message : "unreadable"}`,
-    };
-  }
-};
 
 const scalar = z.union([z.string(), z.number(), z.boolean()]);
 const Values = z.record(z.string(), scalar);
@@ -120,194 +70,17 @@ const parseWorkflow = (file: WorkflowFile): Outcome<Parsed> => {
   }
 };
 
-const mentions = (
-  values: Readonly<Record<string, string | number | boolean>> | undefined
-): boolean =>
-  Object.values(values ?? {}).some(
-    (value) => referencedSecrets(String(value)).length > 0
-  );
-
-/** `${{ secrets.NPM_TOKEN }}` and nothing else: the one value the token variable may have. */
-const tokenExpression = (name: string): string => `\${{ secrets.${name} }}`;
-
-/** A literal credential: an npm token (`npm_` and 20 or more characters) or an `_authToken` that is not the variable. */
-const literalToken =
-  /\bnpm_[A-Za-z0-9]{20,}|_authToken\s*=\s*(?!\$\{NODE_AUTH_TOKEN\})\S/u;
-
-/**
- * What a step that holds the token must not run: a command that prints the environment or traces it. A deny-list of the
- * usual printers (the name, `printenv`, bare `env`, `export`, `declare`/`typeset`, a bare `set`, `compgen -e`, the
- * process environment, `set -x`); it is a guard against a slip, not a proof that nothing can print the token.
- */
-const exposing = new RegExp(
-  [
-    "NODE_AUTH_TOKEN",
-    String.raw`\bprintenv\b`,
-    String.raw`\bset\s+-\w*x`,
-    String.raw`(?:^|\n|;|&&|\|)\s*env\s*(?:\||;|\n|$)`,
-    String.raw`(?:^|\n|;|&&|\|)\s*export\s*(?:-\w+\s*)*(?:\||;|\n|$)`,
-    String.raw`\b(?:declare|typeset)\s+-\w*[xp]`,
-    String.raw`(?:^|\n|;|&&|\|)\s*set\s*(?:\||;|\n|$)`,
-    String.raw`\bcompgen\s+-\w*e`,
-    String.raw`/proc/[^\s]*environ`,
-    String.raw`\bprocess\.env\b`,
-  ].join("|"),
-  "u"
-);
-
-const stepLabel = (step: Step): string => step.name ?? "(unnamed)";
-
-const stepFindings = (
-  where: string,
-  step: Step,
-  secret: string
-): readonly string[] => {
-  const label = `${where} step ${stepLabel(step)}`;
-  const findings: string[] = [];
-
-  if (
-    mentions(step.with) ||
-    (step.run !== undefined && referencedSecrets(step.run).length > 0)
-  ) {
-    findings.push(
-      `${label} puts a secret in run or with, where it can be echoed`
-    );
-  }
-
-  if (!mentions(step.env)) {
-    return findings;
-  }
-
-  for (const [variable, value] of Object.entries(step.env ?? {})) {
-    const text = String(value);
-
-    if (
-      referencedSecrets(text).length > 0 &&
-      (variable !== tokenVariable || text !== tokenExpression(secret))
-    ) {
-      findings.push(
-        `${label} sets ${variable} to ${text}; only ${tokenVariable}: ${tokenExpression(secret)} is allowed`
-      );
-    }
-  }
-
-  if (step.run !== undefined && exposing.test(step.run)) {
-    findings.push(
-      `${label} holds the token and runs something that can print it`
-    );
-  }
-
-  return findings;
-};
-
-const jobFindings = (
-  file: WorkflowFile,
-  secret: string,
-  [jobName, job]: readonly [string, Job]
-): readonly string[] => {
-  const steps = job.steps ?? [];
-  const where = `${file.name} job ${jobName}`;
-  const findings: string[] = [];
-
-  if (mentions(job.env)) {
-    findings.push(
-      `${where} reads a secret at job level, not in the one step that runs npm`
-    );
-  }
-
-  const tokenSteps = steps.filter((step) => mentions(step.env));
-
-  if (tokenSteps.length > 0 && job.environment !== releaseEnvironment) {
-    findings.push(
-      `${where} reads the token outside the ${releaseEnvironment} environment, so a repository secret would serve it`
-    );
-  }
-
-  if (tokenSteps.length > 1) {
-    findings.push(
-      `${where} reads the token in ${tokenSteps.length} steps; it may be read in one`
-    );
-  }
-
-  return [
-    ...findings,
-    ...steps.flatMap((step) => stepFindings(where, step, secret)),
-  ];
-};
-
-const workflowFindings = (
-  file: WorkflowFile,
-  secret: string
-): readonly string[] => {
-  const references = referencedSecrets(file.text);
-
-  const literal = literalToken.test(file.text)
-    ? [
-        `${file.name} holds a literal npm credential or an _authToken that is not \${${tokenVariable}}`,
-      ]
-    : [];
-
-  if (references.length === 0) {
-    return literal;
-  }
-
-  const parsed = parseWorkflow(file);
-
-  if (!parsed.ok) {
-    return [...literal, parsed.problem];
-  }
-
-  return [
-    ...literal,
-    ...references
-      .filter((name) => name !== secret)
-      .map(
-        (name) =>
-          `${file.name} references secret ${name}, which secretspec.toml does not declare`
-      ),
-    ...(mentions(parsed.value.env)
-      ? [`${file.name} reads a secret at workflow level`]
-      : []),
-    ...Object.entries(parsed.value.jobs).flatMap((job) =>
-      jobFindings(file, secret, job)
-    ),
-  ];
-};
-
-/**
- * Sentences about how the workflows and `secretspec.toml` break the token rule. Empty when: `secretspec.toml` declares
- * exactly one secret; the workflows read exactly that secret (and GitHub's own token); a job reads it only in the
- * `npm-release` environment, in a step's `env` as `NODE_AUTH_TOKEN: ${{ secrets.<name> }}`, and that step prints
- * nothing of it; and no file holds a literal token. A repository secret of the same name cannot be seen from these
- * files: the job's `environment` is what makes the environment secret win, and `gh secret list` shows the rest.
- */
+/** Reject long-lived npm authentication and stored secrets in workflows. */
 export const tokenFindings = (
-  workflows: readonly WorkflowFile[],
-  secretspec: string
-): readonly string[] => {
-  const declared = declaredSecrets(secretspec);
-
-  if (!declared.ok) {
-    return [declared.problem];
-  }
-
-  const [secret, ...others] = declared.value;
-
-  if (secret === undefined || others.length > 0) {
-    return [
-      `secretspec.toml must declare exactly one secret, found: ${declared.value.length > 0 ? declared.value.join(", ") : "none"}`,
-    ];
-  }
-
-  const referenced = workflows.flatMap(({ text }) => referencedSecrets(text));
-
-  return [
-    ...(referenced.includes(secret)
-      ? []
-      : [`no workflow reads ${secret}, which secretspec.toml declares`]),
-    ...workflows.flatMap((file) => workflowFindings(file, secret)),
-  ];
-};
+  workflows: readonly WorkflowFile[]
+): readonly string[] =>
+  workflows.flatMap((file) =>
+    /\b(?:NPM_TOKEN|NODE_AUTH_TOKEN|NPM_CONFIG__AUTH|_authToken)\b|\bnpm_[A-Za-z0-9]{20,}|secrets\s*(?:\.|\[)/iu.test(
+      file.text
+    )
+      ? [`${file.name} contains a token or secret reference`]
+      : []
+  );
 
 /** The contexts a job condition may test: the dispatch input and the ref. */
 export interface RunContext {
