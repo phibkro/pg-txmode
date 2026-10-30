@@ -10,6 +10,7 @@ import { describe, expect, test } from "vite-plus/test";
 
 import {
   declaredSecrets,
+  engineFindings,
   evaluateCondition,
   holdFindings,
   holdScript,
@@ -50,6 +51,7 @@ interface Changes {
   readonly beforeHold?: string;
   readonly checkRun?: string;
   readonly checkSteps?: string;
+  readonly engines?: string;
   readonly environment?: string;
   readonly holdExtra?: string;
   readonly jobEnv?: string;
@@ -64,6 +66,11 @@ interface Changes {
   readonly variable?: string;
   readonly workflowEnv?: string;
 }
+
+/** The step that removes `devEngines` in the fixture; a control replaces it (an empty string leaves it out). */
+const enginesBlock = (changes: Changes): string =>
+  changes.engines ??
+  `      - name: npm may run here\n        run: jq 'del(.devEngines)' package.json > p && mv p package.json\n`;
 
 /** The hold step of the fixture: the real script's test, with a line a control may add to the step. */
 const holdBlock = (changes: Changes): string =>
@@ -102,7 +109,7 @@ ${changes.checkSteps ?? ""}
 ${changes.jobEnv ?? ""}${changes.jobExtra ?? ""}
     steps:
       - uses: actions/checkout@abc
-${changes.beforeHold ?? ""}${holdBlock(changes)}      - name: Publish
+${changes.beforeHold ?? ""}${holdBlock(changes)}${enginesBlock(changes)}      - name: Publish
 ${changes.publishExtra ?? ""}        env:
           NODE_AUTH_TOKEN: ${expression("NPM_TOKEN")}
         run: ${changes.publishRun ?? "bunx changeset publish"}
@@ -556,6 +563,36 @@ describe("the release hold", () => {
   });
 });
 
+describe("the devEngines removal", () => {
+  test("holds for the shape in which a step removes devEngines before the publish", () => {
+    expect(engineFindings(release({}))).toStrictEqual([]);
+  });
+
+  test("fails a publishing job without that step, or with it after the publish (controls)", () => {
+    const missing = mentions("removes devEngines");
+
+    expect(missing(engineFindings(release({ engines: "" })))).toBe(true);
+    expect(
+      missing(
+        engineFindings(
+          release({
+            engines: "      - name: unrelated\n        run: echo hello\n",
+          })
+        )
+      )
+    ).toBe(true);
+  });
+
+  test("the real workflow removes devEngines before it publishes, and the check job (a dry run) needs no such step", () => {
+    expect(
+      engineFindings({
+        name: "release.yml",
+        text: readRepositoryFile(".github/workflows/release.yml"),
+      })
+    ).toStrictEqual([]);
+  });
+});
+
 const published = (log: readonly string[]): readonly string[] =>
   log.filter((line) => line.startsWith("publish "));
 
@@ -717,6 +754,19 @@ describe("the publish step", () => {
     expect(exitCode).not.toBe(0);
     expect(stdout).toContain("not E404");
     expect(stdout).toContain("ENOTFOUND registry unreachable");
+    expect(published(log)).toStrictEqual([]);
+  });
+
+  test("a gateway error that mentions 404 is not an E404 (control)", () => {
+    const { exitCode, log, stdout } = runPublish({
+      existing: [],
+      pre: alpha,
+      viewError:
+        "npm error code E502\nnpm error 502 Bad Gateway - GET https://registry.npmjs.org/@pg-txmode%2fcore - upstream said 404",
+    });
+
+    expect(exitCode).not.toBe(0);
+    expect(stdout).toContain("not E404");
     expect(published(log)).toStrictEqual([]);
   });
 

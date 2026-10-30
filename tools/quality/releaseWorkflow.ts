@@ -668,3 +668,35 @@ export const holdFindings = (file: WorkflowFile): readonly string[] => {
       )
     : [parsed.problem];
 };
+
+/** The step that makes npm usable in the checkout: `devEngines.packageManager` names Bun and npm refuses with EBADDEVENGINES. */
+const removesDevEngines = (step: Step): boolean =>
+  step.run?.includes("del(.devEngines)") === true;
+
+/**
+ * Sentences about the `devEngines` removal (spec 0008). Empty when every job that holds a publish command has a step
+ * that removes `devEngines` from `package.json` before the first such command: without it npm fails in the checkout,
+ * and a publish that fails only on the runner is found out on the first release.
+ */
+export const engineFindings = (file: WorkflowFile): readonly string[] => {
+  const parsed = parseWorkflow(file);
+
+  if (!parsed.ok) {
+    return [parsed.problem];
+  }
+
+  return Object.entries(parsed.value.jobs).flatMap(([name, job]) => {
+    const steps = job.steps ?? [];
+    const publishing = steps.findIndex((step) => publishes(step.run));
+
+    if (publishing === -1) {
+      return [];
+    }
+
+    return steps.slice(0, publishing).some(removesDevEngines)
+      ? []
+      : [
+          `${file.name}: job ${name} publishes and has no step before it that removes devEngines from package.json`,
+        ];
+  });
+};
