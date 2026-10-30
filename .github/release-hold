@@ -1,4 +1,0 @@
-The first npm publish of the @pg-txmode packages is an operator decision: a published npm name and version are permanent.
-The first publish creates four names at once: @pg-txmode/core, @pg-txmode/pg, @pg-txmode/effect and @pg-txmode/lint.
-Lift this hold with a pull request that deletes this file and adds a dated entry to the Revisions of docs/specs/0006-release.md.
-The `check` mode of the Release workflow is not held: it publishes nothing.

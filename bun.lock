@@ -21,7 +21,7 @@
     },
     "packages/core": {
       "name": "@pg-txmode/core",
-      "version": "0.0.0",
+      "version": "0.1.0-alpha.0",
       "devDependencies": {
         "@types/node": "catalog:",
         "typescript": "catalog:",
@@ -30,7 +30,7 @@
     },
     "packages/effect": {
       "name": "@pg-txmode/effect",
-      "version": "0.0.0",
+      "version": "0.1.0-alpha.0",
       "dependencies": {
         "@pg-txmode/core": "workspace:*",
       },
@@ -70,7 +70,7 @@
     },
     "packages/lint": {
       "name": "@pg-txmode/lint",
-      "version": "0.0.0",
+      "version": "0.1.0-alpha.0",
       "bin": {
         "pg-txmode-lint": "./src/cli.ts",
       },
@@ -88,7 +88,7 @@
     },
     "packages/pg": {
       "name": "@pg-txmode/pg",
-      "version": "0.0.0",
+      "version": "0.1.0-alpha.0",
       "dependencies": {
         "@pg-txmode/core": "workspace:*",
         "@types/pg": "catalog:",
