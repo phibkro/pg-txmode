@@ -1,5 +1,12 @@
 # @pg-txmode/harness
 
+## 0.1.0-alpha.2
+
+### Patch Changes
+
+- A server whose cleanup watchdog cannot run (no `sh`, or no `sleep` or `rm` on PATH) is killed and the start fails with the cause, instead of crashing the host or spinning a core.
+- @pg-txmode/core@0.1.0-alpha.2
+
 ## 0.1.0-alpha.1
 
 ### Minor Changes
