@@ -217,6 +217,50 @@ V6 `--tag latest` hard-coded in the Publish step      FAIL the publish step > ..
 restored                                              Tests  29 passed (29)
 ```
 
+## 7. What `npm view` answers on the real registry (read only, 2026-10-30, from `/tmp`)
+
+```sh
+npm view zod@9.9.9 version; echo "exit $?"                        # a package that exists, a version that does not
+npm view @pg-txmode/nonexistent-xyz@1.0.0 version; echo "exit $?"  # a package that does not exist
+npm view @pg-txmode/core@0.1.0-alpha.0 version; echo "exit $?"     # the real name, not published yet
+```
+
+```text
+npm error code E404
+npm error 404 No match found for version 9.9.9
+... exit 1
+npm error code E404
+npm error 404 Not Found - GET https://registry.npmjs.org/@pg-txmode%2fnonexistent-xyz - Not found
+... exit 1
+npm error code E404
+npm error 404 Not Found - GET https://registry.npmjs.org/@pg-txmode%2fcore - Not found
+... exit 1
+```
+
+The `Publish` step publishes only on output with `E404`. As of this reading `@pg-txmode/core` does not exist on npm. The step's tests (stubs) cover a non-E404 error (printed, nothing published) and a refused name (E403 on `effect` after `core`: the set stops, and a re-run skips `core` and publishes `effect`, `lint`, `pg`).
+
+## 8. The version commit (`changeset version`) and the tarballs it gives
+
+```sh
+devenv shell -- bunx changeset version                 # one changeset file for the four packages
+devenv shell -- bun install --frozen-lockfile          # Checked 324 installs across 474 packages (no changes)
+devenv shell -- bun run release:stage                  # Staged @pg-txmode/core, @pg-txmode/effect, @pg-txmode/lint, @pg-txmode/pg.
+cd /tmp && npm publish <worktree>/packages/<name>/dist --dry-run --tag alpha --access public
+```
+
+`"version"` of the manifests: core, pg, effect, lint `0.1.0-alpha.0`; harness `0.0.0`. Each `dist` now has a `CHANGELOG.md`. Raw `npm notice` output (dry run, no `npm warn`):
+
+```text
+== core    @pg-txmode/core@0.1.0-alpha.0    package size: 29.8 kB  unpacked size: 109.7 kB  total files: 9
+            CHANGELOG.md 294B  LICENSE 11.4kB  NOTICE 127B  README.md 305B  cancel.d.mts 813B  cancel.mjs 1.2kB  index.d.mts 43.1kB  index.mjs 51.8kB  package.json 817B
+== pg      @pg-txmode/pg@0.1.0-alpha.0      package size: 10.2 kB  unpacked size: 29.4 kB  total files: 7
+            CHANGELOG.md 369B  LICENSE 11.4kB  NOTICE 127B  README.md 268B  index.d.mts 7.1kB  index.mjs 9.4kB  package.json 801B
+== effect  @pg-txmode/effect@0.1.0-alpha.0  package size: 11.8 kB  unpacked size: 40.3 kB  total files: 7
+            CHANGELOG.md 373B  LICENSE 11.4kB  NOTICE 127B  README.md 241B  index.d.mts 12.0kB  index.mjs 15.4kB  package.json 829B
+== lint    @pg-txmode/lint@0.1.0-alpha.0    package size: 14.1 kB  unpacked size: 43.4 kB  total files: 10
+            CHANGELOG.md 371B  LICENSE 11.4kB  NOTICE 127B  README.md 252B  cli.d.mts 9B  cli.mjs 3.2kB  extract-D8E-g69f.mjs 21.7kB  index.d.mts 5.3kB  index.mjs 251B  package.json 867B
+```
+
 ## What this does not show
 
 - The real npm registry: the `@pg-txmode` scope, the token's rights, provenance and OIDC. A local registry has none of them.
