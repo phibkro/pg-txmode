@@ -37,7 +37,7 @@ Evidence: [`docs/evidence/harness-publish/README.md`](../evidence/harness-publis
 | `@pg-txmode/lint` | stays a development dependency | only the tests use it |
 | peers / engines | none; Node 24 is the version it was run on, said in the README, not enforced (spec 0006 Revisions 4: nothing measured a floor) | |
 | secrets | none: authentication is `trust` on `127.0.0.1`, user and database `app`; the README says so | the repository is public |
-| README | `packages/harness/README.md` ships (stage copies a package README when there is one; the others keep the generated one) | what it spawns (`initdb`, `postgres`, `pgbouncer`, from `PATH`), how to provide them (`nix shell`, devenv, CI image), temporary directories, free loopback ports, `stop()` |
+| README | `packages/harness/README.md` ships (stage copies a package README when there is one; the others keep the generated one) | what it spawns (`initdb`, `postgres`, `createdb`, `pgbouncer`, from `PATH`), non-durable PostgreSQL settings, what happens when the starting process dies, how to provide them (`nix shell`, devenv, CI image), temporary directories, free loopback ports, `stop()` |
 | Release rules | the test "the harness stays private" becomes "all five are published, nothing is private"; the two "workspace:* to a private package" controls use a synthetic private name | the controls still fail what they failed before |
 
 ### Lockstep: all five at `0.1.0-alpha.1`
@@ -49,7 +49,7 @@ Alternative: leave the harness out of the group at `0.1.0-alpha.0` and republish
 What the lockstep publish does to dist-tags, with the `Publish` step of spec 0006 (`npm publish --tag alpha` for each, core first, skipping a version the registry has):
 
 - `alpha` moves to `0.1.0-alpha.1` on all five;
-- `latest` of the four stays on `0.1.0-alpha.0` (observed on the local registry in spec 0006: later publishes with an explicit `--tag` do not move it; npm itself is not observed for this); `latest` of the harness is whatever the registry sets on a first publish (probably `0.1.0-alpha.1`; read it afterwards, as for the four);
+- `latest` of the four stays on `0.1.0-alpha.0` (observed on the local registry in spec 0006: later publishes with an explicit `--tag` do not move it; on npm: only the first-publish value is observed, Revisions 4); `latest` of the harness is set by npm on its first publish, which gives `0.1.0-alpha.1` by the rule observed for the four (read it afterwards);
 - an install by `@alpha` gets a consistent set; an untagged install of core gets `0.1.0-alpha.0` and of the harness `0.1.0-alpha.1`, which are not a consistent pair: the README already says `latest` is unmanaged and `@alpha` is the one to use.
 
 ## Gates and falsifiers
@@ -61,6 +61,8 @@ What the lockstep publish does to dist-tags, with the `Publish` step of spec 000
 | F-h3 | The tarball installs, imports, starts a stack and type-checks in a project that is not this repository | evidence section 2 (needs the PostgreSQL and PgBouncer binaries; not a gate) | before the `@types/pg` fix: `tsc` exit 1, TS2665 |
 | F-h4 | The stage copies a package README | `release:stage` listing (`README.md` of 2.8 kB in the harness tarball, the generated 250 B in the others) | n/a |
 | F-h5 | A published package may not depend on a private one | `release.test.ts` | a synthetic private package (fixture) |
+| F-h6 | A parent that dies before `stop()` leaves no server and no directory | `orphans.test.ts` (parent killed with `SIGKILL`, `SIGTERM`, `SIGINT`; its own `TMPDIR`) | the watchdog disabled: all three fail |
+| F-h7 | The README exists and names every binary spawned, the non-durable settings and the cleanup | `release.test.ts` | the generated README names none (fixture) |
 
 ## Constraints and values
 
@@ -72,8 +74,14 @@ What the lockstep publish does to dist-tags, with the `Publish` step of spec 000
 
 1. Merge this PR (nothing is published).
 2. The version PR: a changeset for the harness, `bun run release:version` (all five at `0.1.0-alpha.1`).
-3. The operator dispatches `mode=publish`; afterwards read `npm view @pg-txmode/<name> dist-tags` for the five.
+3. The operator dispatches `mode=publish`; afterwards read `npm view @pg-txmode/<name> dist-tags` for the five. If the run fails part-way (for example the new name `@pg-txmode/harness` is refused), `@alpha` is a mixed set until a re-run completes: re-run, do not install in between.
 
 ## Revisions
 
 - **2026-10-30, plan written** with the build. It supersedes the line of spec 0006 that keeps the harness private (a dated entry is added there too).
+- **2026-10-30, after review round 1 of PR #15 (recorded by `RevPgTx3` at `5996488`).**
+  1. **A parent that dies leaves no server behind (medium).** `run()` had no exit or signal hook: a Node process that called `startStack` and then got `SIGKILL`, `SIGTERM` or `SIGINT` left `postgres`, `pgbouncer` and both `pg-txmode-*` directories behind in 3 of 3 runs on the installed tarball (the reviewer found 26 stale directories and 19 orphan servers on the same machine). Fix: each server gets a **watchdog**, a detached `sh` (`kill -0` poll once a second) that, when the starting process is gone and the server still runs, kills it and removes its directory. A watchdog and not a Node signal handler because nothing in Node can catch `SIGKILL`; one mechanism covers all three signals and a crash, and it does not install handlers in the consumer's process (a signal handler would change whether `SIGINT` terminates it). Limits, in the README: needs a POSIX `sh`; cleanup within about two seconds, not instantly; a `stop()` leaves a watchdog for at most a second. **Falsifier F-h6** (`orphans.test.ts`): a parent process starts a stack with its own `TMPDIR`, is killed with `SIGKILL`, `SIGTERM` and `SIGINT`, and the test checks that neither port accepts connections and the `TMPDIR` is empty. Control: with the watchdog line disabled all three fail (`3 failed`, 41 s each: the servers stay up); the orphans that control created were ended by pid.
+  2. **The README names `createdb`, `fsync=off` and `synchronous_commit=off`**, and the cleanup above. **F-h7** (`release.test.ts`): the README must exist and mention `initdb`, `postgres`, `createdb`, `pgbouncer`, `fsync=off`, `SIGKILL` and `watchdog`; the same check on what stage generates for a package without a README names none of them.
+  3. **`@alpha` is split if the publish stops at the new name.** The `Publish` step is alphabetical (core, effect, harness, lint, pg) and stops at the first failure: a registry that refuses the new name leaves core and effect at `0.1.0-alpha.1`, lint and pg at `0.1.0-alpha.0`, harness absent. The re-run publishes the rest. Not changed in code (the order is the glob's); an `@alpha` install is a consistent set only after a **complete** run, and the operator steps now say so.
+  4. **npm's first-publish `latest` is observed now.** On the real registry (read only, 2026-10-30, `npm view @pg-txmode/<name> dist-tags`): core, pg, effect and lint have `{latest: 0.1.0-alpha.0, alpha: 0.1.0-alpha.0}`: npm sets `latest` on a first publish with `--tag alpha`. The harness is E404 until its first publish, so its `latest` will be `0.1.0-alpha.1` by the same rule (inferred, not observed). That a later publish with an explicit `--tag alpha` leaves `latest` alone is still observed only on the local registry; read the dist-tags of all five after the run.
+  5. **The changeset text no longer refers to other packages.** It is the harness's CHANGELOG entry; it now says what the harness is.

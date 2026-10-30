@@ -1,0 +1,118 @@
+import { spawn } from "node:child_process";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { connect } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+
+import { describe, expect, test } from "vite-plus/test";
+
+/**
+ * A process that starts a stack and dies without calling `stop()` must not leave a server or a directory behind. The
+ * parent runs in a process of its own (`orphanChild.ts`) with its own temporary directory, so the test can tell its
+ * leftovers from every other test's.
+ */
+
+interface Ports {
+  readonly pooler: number;
+  readonly postgres: number;
+}
+
+const childPath = path.join(import.meta.dirname, "orphanChild.ts");
+
+const accepts = async (port: number): Promise<boolean> => {
+  const { promise, resolve } = Promise.withResolvers<boolean>();
+  const socket = connect(port, "127.0.0.1");
+
+  socket.once("connect", () => {
+    socket.destroy();
+    resolve(true);
+  });
+  socket.once("error", () => {
+    resolve(false);
+  });
+
+  return await promise;
+};
+
+const untilTrue = async (
+  check: () => Promise<boolean>,
+  seconds: number
+): Promise<boolean> => {
+  for (let waited = 0; waited < seconds * 10; waited += 1) {
+    if (await check()) {
+      return true;
+    }
+
+    await sleep(100);
+  }
+
+  return await check();
+};
+
+/** Starts the parent, waits until its servers accept connections, kills it with `signal`, and reports what is left. */
+const killParent = async (
+  signal: NodeJS.Signals
+): Promise<{
+  readonly directories: readonly string[];
+  readonly serversWereUp: boolean;
+  readonly serversGone: boolean;
+}> => {
+  const scratch = await mkdtemp(path.join(tmpdir(), "pg-txmode-orphans-"));
+
+  try {
+    const parent = spawn(process.execPath, [childPath], {
+      env: { ...process.env, TMPDIR: scratch },
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+
+    const { promise: line, resolve } = Promise.withResolvers<string>();
+
+    parent.stdout.once("data", (chunk: Buffer) => {
+      resolve(chunk.toString());
+    });
+
+    // orphanChild.ts prints {"pooler":<port>,"postgres":<port>} as its first line.
+    const found = /"pooler":(?<pooler>\d+),"postgres":(?<postgres>\d+)/u.exec(
+      await line
+    )?.groups;
+
+    if (found?.pooler === undefined || found.postgres === undefined) {
+      throw new Error("the parent did not report its ports");
+    }
+
+    const ports: Ports = {
+      pooler: Number(found.pooler),
+      postgres: Number(found.postgres),
+    };
+
+    const serversWereUp =
+      (await accepts(ports.postgres)) && (await accepts(ports.pooler));
+
+    parent.kill(signal);
+
+    const serversGone = await untilTrue(
+      async () =>
+        !(await accepts(ports.postgres)) && !(await accepts(ports.pooler)),
+      20
+    );
+
+    await untilTrue(async () => (await readdir(scratch)).length === 0, 20);
+
+    return { directories: await readdir(scratch), serversGone, serversWereUp };
+  } finally {
+    await rm(scratch, { force: true, recursive: true });
+  }
+};
+
+describe("a parent that dies before stop()", () => {
+  for (const signal of ["SIGKILL", "SIGTERM", "SIGINT"] as const) {
+    test(`${signal} leaves no server and no directory behind`, async () => {
+      const left = await killParent(signal);
+
+      expect(left.serversWereUp).toBe(true);
+      expect(left.serversGone).toBe(true);
+      expect(left.directories).toStrictEqual([]);
+    }, 90_000);
+  }
+});

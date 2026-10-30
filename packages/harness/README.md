@@ -8,7 +8,7 @@ Alpha (`0.1.0-alpha.N`, dist-tag `alpha`): `npm i -D @pg-txmode/harness@alpha`. 
 
 | Process | Started by | Found how |
 | --- | --- | --- |
-| `initdb` and `postgres` (PostgreSQL) | `startPostgres()`, `startStack()` | on `PATH` |
+| `initdb`, `postgres` and `createdb` (PostgreSQL) | `startPostgres()`, `startStack()` (`initdb` and `createdb` run to completion; `postgres` keeps running) | on `PATH` |
 | `pgbouncer` | `startPgBouncer()`, `startStack()` | on `PATH` |
 
 Nothing is downloaded and nothing is installed: **you provide the binaries**. Tested with PostgreSQL 18 and PgBouncer 1.25 (the probe results in the catalogue name them). A missing binary makes the start fail with the command's own error.
@@ -20,7 +20,9 @@ What it does on your machine:
 - every instance gets a new temporary directory (`pg-txmode-*` under the system temp directory) and **free ports on `127.0.0.1`**; nothing listens on another interface;
 - authentication is `trust`, for the user and database `app`: there is no password and no secret anywhere, which is why it must stay on loopback and in tests;
 - the PgBouncer settings are the published ones of [Neon's pooler](https://neon.com/docs/connect/connection-pooling) (`pool_mode = transaction`, `max_client_conn` lowered to the open-file limit when that is lower);
-- `stop()` ends the process and removes the directory.
+- PostgreSQL runs with `fsync=off` and `synchronous_commit=off` (faster, **not durable**: a crash loses data, which a throwaway test database does not mind);
+- `stop()` ends the process and removes the directory;
+- **if your process dies before `stop()`** (a crash, `SIGKILL`, `SIGTERM`, `SIGINT`, a test runner that kills its worker) each server has a small watchdog, a detached `sh` that polls once a second. When the starting process is gone it kills the server and removes its directory, within about two seconds. Nothing in Node can catch `SIGKILL`, so a separate process does it; it needs a POSIX `sh` with `kill`, `sleep` and `rm`. A test (`orphans.test.ts`) kills a parent with each of the three signals and checks that no server and no directory is left. A watchdog ends by itself when the server or its parent is gone, so after a normal `stop()` it lingers for at most a second.
 
 ## API
 
