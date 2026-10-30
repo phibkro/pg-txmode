@@ -6,7 +6,7 @@
       "project": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
     },
     "packages/harness": {
-      "entry": ["test/**/*.test.ts"],
+      "entry": ["test/**/*.test.ts", "test/orphanChild.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]
     },
     "packages/lint": {

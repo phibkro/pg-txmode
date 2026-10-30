@@ -466,4 +466,29 @@ describe("what ships with every package", () => {
       "Apache License"
     );
   });
+
+  test("the harness README ships and names every binary it spawns and the cleanup it does (control: the generated README names none)", () => {
+    const required = [
+      "initdb",
+      "postgres",
+      "createdb",
+      "pgbouncer",
+      "fsync=off",
+      "SIGKILL",
+      "watchdog",
+    ];
+
+    const missing = (text: string): readonly string[] =>
+      required.filter((word) => !text.includes(word));
+
+    expect(
+      missing(
+        readFileSync(path.join(repoRoot, "packages/harness/README.md"), "utf-8")
+      )
+    ).toStrictEqual([]);
+    // What stage writes for a package without a README of its own: the description only.
+    expect(
+      missing("# @pg-txmode/harness\n\nTest tool of pg-txmode.\n")
+    ).toStrictEqual(required);
+  });
 });
