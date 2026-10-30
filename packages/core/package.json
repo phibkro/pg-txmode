@@ -1,6 +1,6 @@
 {
   "name": "@pg-txmode/core",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Safe PostgreSQL through transaction-pooling proxies: the catalogue of what breaks, the connection mode and its capabilities, SQL constructs, SQLSTATE classification, transaction opening and retry.",
   "license": "Apache-2.0",
   "type": "module",
