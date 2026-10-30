@@ -1,6 +1,7 @@
 # Provenance: adapted from reebeat/studio @ d4fd75eaca83b9e8a98f073d5b1d957da5d6b8b8 (.github/workflows/checks.yml), which
 # adapted it from reebeat/reebeat @ f7c348877585f54b6bf00651608726dd7e5044d3 and phibkro/vektorprogrammet-reimagined
-# @ 797e9e41d96194b9479ff224ac1c40bbc0545888. Deviation: two step names (no Effect, no editor here); the commands and pins are the same.
+# @ 797e9e41d96194b9479ff224ac1c40bbc0545888. Deviation: two step names (no Effect, no editor here); one step added
+# (`Stage release packages`, spec 0006); the commands and pins are the same.
 # Each step calls the root script of the same name (`bun run ready` is their sequence), never its command.
 name: Checks
 
@@ -47,6 +48,9 @@ jobs:
       - name: Build
         shell: bash
         run: devenv shell -- bun run build
+      - name: Stage release packages
+        shell: bash
+        run: devenv shell -- bun run release:stage
       - name: Knip
         shell: bash
         run: devenv shell -- bun run knip

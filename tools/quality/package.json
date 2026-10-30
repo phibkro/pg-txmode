@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "oxc-parser": "catalog:",
+    "smol-toml": "1.9.1",
+    "yaml": "2.9.1",
     "zod": "catalog:"
   },
   "devDependencies": {

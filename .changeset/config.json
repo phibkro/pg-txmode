@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
+  "access": "public",
+  "baseBranch": "main",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    ["@pg-txmode/core", "@pg-txmode/effect", "@pg-txmode/lint", "@pg-txmode/pg"]
+  ],
+  "ignore": [],
+  "linked": [],
+  "privatePackages": { "tag": false, "version": false },
+  "updateInternalDependencies": "patch"
+}

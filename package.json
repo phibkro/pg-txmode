@@ -2,6 +2,13 @@
   "name": "pg-txmode",
   "version": "0.0.0",
   "private": true,
+  "homepage": "https://github.com/phibkro/pg-txmode#readme",
+  "bugs": "https://github.com/phibkro/pg-txmode/issues",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phibkro/pg-txmode.git"
+  },
   "workspaces": [
     "packages/*",
     "tools/*"
@@ -9,7 +16,7 @@
   "type": "module",
   "scripts": {
     "prepare": "vp config --no-agent",
-    "ready": "bun run check && bun run check:effect && bun run check:exceptions && bun run check:docs && bun run test && bun run build && bun run knip && bun run cpd && bun run secrets",
+    "ready": "bun run check && bun run check:effect && bun run check:exceptions && bun run check:docs && bun run test && bun run build && bun run release:stage && bun run knip && bun run cpd && bun run secrets",
     "check": "vp check",
     "check:effect": "effect-tsgo tsc -p packages/effect",
     "test": "vp run -r --no-cache test",
@@ -23,9 +30,13 @@
     "cpd": "jscpd --config .jscpd.json .",
     "secrets": "gitleaks git --config .gitleaks.toml --redact",
     "commitlint": "commitlint",
+    "changeset": "changeset",
+    "release:version": "changeset version",
+    "release:stage": "bun tools/quality/stagePackages.ts",
     "probes:effect": "bun packages/effect/scripts/designs.ts"
   },
   "devDependencies": {
+    "@changesets/cli": "3.0.3",
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
     "@effect/tsgo": "catalog:",

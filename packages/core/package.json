@@ -1,13 +1,19 @@
 {
   "name": "@pg-txmode/core",
   "version": "0.0.0",
-  "private": true,
+  "description": "Safe PostgreSQL through transaction-pooling proxies: the catalogue of what breaks, the connection mode and its capabilities, SQL constructs, SQLSTATE classification, transaction opening and retry.",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
     "./cancel": "./src/cancel.ts"
   },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
   "scripts": {
+    "prepublishOnly": "echo 'publish packages/core/dist (bun run release:stage), not the source directory' && exit 1",
     "test": "bunx vp test",
     "build": "vp pack"
   },
