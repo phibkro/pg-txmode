@@ -47,8 +47,8 @@ cd /tmp && npm publish <worktree>/packages/<name>/dist --dry-run --tag alpha --a
 ```text
 == core     name: @pg-txmode/core    package size: 29.6 kB  unpacked size: 109.4 kB  total files: 8   + @pg-txmode/core@0.0.0
 == pg       name: @pg-txmode/pg      package size: 10.0 kB  unpacked size: 29.0 kB   total files: 6   + @pg-txmode/pg@0.0.0
-== effect   name: @pg-txmode/effect  package size: 11.6 kB  unpacked size: 40.0 kB   total files: 6   + @pg-txmode/effect@0.0.0
-== lint     name: @pg-txmode/lint    package size: 14.0 kB  unpacked size: 43.1 kB   total files: 9   + @pg-txmode/lint@0.0.0
+== effect   name: @pg-txmode/effect  package size: 11.6 kB  unpacked size: 39.9 kB   total files: 6   + @pg-txmode/effect@0.0.0
+== lint     name: @pg-txmode/lint    package size: 13.9 kB  unpacked size: 43.0 kB   total files: 9   + @pg-txmode/lint@0.0.0
 ```
 
 (Each line summarises the `npm notice` block; the full blocks end with `Publishing to https://registry.npmjs.org/ with tag alpha and public access (dry-run)`.) A dry run does not authenticate.
