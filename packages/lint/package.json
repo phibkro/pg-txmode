@@ -1,7 +1,8 @@
 {
   "name": "@pg-txmode/lint",
   "version": "0.0.0",
-  "private": true,
+  "description": "SQL lint for transaction-pooled connections, on the PostgreSQL parser's own AST: .sql files, sql tagged templates and a recorded statement log.",
+  "license": "Apache-2.0",
   "bin": {
     "pg-txmode-lint": "./src/cli.ts"
   },
@@ -9,7 +10,12 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
   "scripts": {
+    "prepublishOnly": "echo 'publish packages/lint/dist (bun run release:stage), not the source directory' && exit 1",
     "test": "bunx vp test",
     "build": "vp pack"
   },

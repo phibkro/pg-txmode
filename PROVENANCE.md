@@ -56,6 +56,29 @@ The development lifecycle (spec 0000) is copied from [`reebeat/studio`](https://
 
 `packages/effect/tsconfig.json` carries reebeat's list of Effect language-service diagnostics (all at `error`, `reebeat/reebeat` @ `82ee66f` `tsconfig.json`) with its own `allowedUnstableApis`: the modules the adapter uses, which spec 0003 names.
 
+## Added by spec 0006 (npm release)
+
+Source: [`tsukuri-labs/tsukuri`](https://github.com/tsukuri-labs/tsukuri) (the reebeat repository; Apache-2.0, read with `gh api repos/tsukuri-labs/tsukuri --jq .license.spdx_id`) spec 0009, PR #29, merge commit `d0c5a1de330200302edbad58784f351b09eeb4f8`, read 2026-10-30.
+
+| File | Source (tsukuri `d0c5a1d`) | Deviation |
+| --- | --- | --- |
+| `.github/workflows/release.yml` | same path | package names and scope; the `check` job gains a checkout, the stage step and a `--dry-run` publish of each package (tsukuri's `check` needs none); the tag of the dry run is read from `.changeset/pre.json`; the hold text and the pins are the same |
+| `.github/release-hold` | same path | the reason (the first publish is the operator's decision; tsukuri's was a name clearance) |
+| `secretspec.toml` | same path | project name and the description; `prompt = true` dropped (it needs SecretSpec 0.19 and is ignored before it, and nothing here uses it) |
+| `tools/quality/releaseWorkflow.ts`, `test/releaseWorkflow.test.ts` | `tools/quality/releaseWorkflow.ts`, `tools/quality/test/releaseWorkflow.test.ts` | **ported to plain TypeScript** (`zod`, `yaml`, `smol-toml`; Vitest): the same rules and controls; a publish command with `--dry-run` is not a publish, a script is split at `;`, `&&`, `\|\|` and `\|`, with controls for both |
+| `tools/quality/release.ts`, `stagePackages.ts` | none: **original**. The design (publishConfig `directory: dist`, a generated manifest, an `npm pack --dry-run --json` allowlist, `workspace:`/`catalog:` rewriting) follows the decisions of tsukuri's spec 0009, which was read; its stage script and `release.ts` were not | `exports` map to a flat `dist`; `bin` is built; one added rule (`importFindings`: a built file may import only what the manifest ships, and declarations need shipped types) found a real defect (spec 0006, Revisions 1) |
+| `tools/quality/test/release.test.ts` | `tools/quality/test/release.test.ts` (read; not copied) | rewritten in plain Vitest for this repository's rules; the same shape (a rule, a control, then the real manifests) |
+| `.changeset/config.json`, `README.md` | `changeset init` of `@changesets/cli` 3.0.3 | one `fixed` group of four packages; `commit: false`; `privatePackages`; `access: public` |
+| `.changeset/pre.json` | `changeset pre enter alpha` | none |
+
+| Package | Licence | Used for |
+| --- | --- | --- |
+| `@changesets/cli` 3.0.3 | MIT | versioning and `changeset publish` (root, build time; the published packages do not depend on it) |
+| `yaml` 2.9.1 | ISC | parsing the workflow files in the release rules (`tools/quality`) |
+| `smol-toml` 1.9.1 | BSD-3-Clause | parsing `secretspec.toml` in the release rules (`tools/quality`; already in the lock through `knip`) |
+
+Licences read from the registry on 2026-10-30 (`npm view yaml@2.9.1 license`: ISC; `@changesets/cli@3.0.3`: MIT; `smol-toml@1.9.1`: BSD-3-Clause).
+
 Not copied from studio: `apps/editor`, `tools/oxlint/anti-slop/**`, `tools/quality/effectFamily.ts`, `diagnosticRules.ts`, `featureMap.ts`, `foldkitLint.ts` and their tests, `docs/design`, `STATE.md` (rewritten), the `verify-studio` launch, doctor, cleanup and page scripts.
 
 ## Third-party licence texts

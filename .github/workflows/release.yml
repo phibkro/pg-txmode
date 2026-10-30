@@ -1,0 +1,169 @@
+# Publishes the @pg-txmode/* packages to npm (spec 0006). Manual only: a maintainer starts it on `main` after the
+# "Version Packages" commit (`bun run release:version`) has merged, and chooses a mode:
+#   check    no publish: builds what is published, runs `npm publish --dry-run` for each package, then prints who the
+#            token is and what it can list (job `check`).
+#   publish  builds what is published and publishes it (job `publish`).
+# Authentication, for now: one granular npm token, the environment secret NPM_TOKEN of `npm-release` (declared in
+# secretspec.toml, the same name), given to the one step that runs npm with it as NODE_AUTH_TOKEN. The target is npm
+# trusted publishing (OIDC): npm tries the OIDC exchange first and uses the token only when the package has no trusted
+# publisher, so configuring one needs no change here; removing the token is the checklist of spec 0006, "Revisions".
+# This file's name, `release.yml`, and the environment name `npm-release` are what npmjs.com matches for OIDC.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check: dry-run publish of each package and the token's identity, publish nothing. publish: publish."
+        type: choice
+        options: [check, publish]
+        default: check
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    # No step runs a publish command without --dry-run, and the publish job below does not run in this mode.
+    if: inputs.mode == 'check' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: npm-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012 # v31
+      - uses: cachix/cachix-action@97e5ff84d02b3b4f9936339f767e17f03c9252ed # v16
+        with:
+          name: devenv
+      - name: Install pinned devenv CLI
+        shell: bash
+        run: nix profile add github:cachix/devenv/b904dcb51fe48c30db250038241507f60752f222
+      - name: Install workspace dependencies
+        shell: bash
+        run: devenv shell -- bun install --frozen-lockfile
+      - name: Build what is published
+        shell: bash
+        run: devenv shell -- bun run release:stage
+      - name: Dry-run publish of each package (no token)
+        shell: bash
+        # Runs from outside the checkout: npm refuses to run below a root package.json whose devEngines.packageManager
+        # names another tool (EBADDEVENGINES). A dry run does not authenticate: it proves the tarball and the manifest
+        # are accepted by npm's client, not that the token may publish or may create the @pg-txmode scope.
+        run: |
+          tag=$(jq -r '.tag // "latest"' .changeset/pre.json 2>/dev/null || echo latest)
+          cd "$RUNNER_TEMP"
+          for manifest in "$GITHUB_WORKSPACE"/packages/*/dist/package.json; do
+            dist=$(dirname "$manifest")
+            echo "::group::$(jq -r .name "$manifest")@$(jq -r .version "$manifest") (tag $tag)"
+            npm publish "$dist" --dry-run --tag "$tag" --access public
+            echo "::endgroup::"
+          done
+      - name: npm credentials file (the token itself is never written)
+        shell: bash
+        run: |
+          printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$RUNNER_TEMP/npmrc"
+      - name: Check the token (read-only, no publish)
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npmrc
+        run: |
+          status=pass
+          cd "$RUNNER_TEMP"
+          echo "npm $(npm --version), node $(node --version)"
+          echo "::group::npm whoami"
+          if user=$(npm whoami 2>&1); then echo "token user: $user"; else echo "FAIL npm whoami: $user"; status=fail; fi
+          echo "::endgroup::"
+          echo "::group::npm access list packages @pg-txmode"
+          if out=$(npm access list packages @pg-txmode --json 2>&1); then echo "$out"; else echo "no listing (a token that cannot read the scope, or no package exists yet): $out"; fi
+          echo "::endgroup::"
+          echo "::group::npm org ls pg-txmode"
+          if out=$(npm org ls pg-txmode --json 2>&1); then echo "$out"; else echo "no org listing (needs a token with access to the organisation): $out"; fi
+          echo "::endgroup::"
+          echo "token expiry: not shown. npm token management is an account action that a token cannot perform; read it on npmjs.com."
+          echo "write access to @pg-txmode: not shown. npm has no read-only write probe; only the first publish proves it."
+          echo "result: $status"
+          test "$status" = pass
+
+  publish:
+    # Only the head of main is released; the check below ties the commit to a green `checks` run.
+    if: inputs.mode == 'publish' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: npm-release
+    permissions:
+      contents: read
+      checks: read
+      id-token: write # npm trusted publishing (OIDC) and the provenance attestation, with or without a token
+    env:
+      # A publish that cannot produce provenance fails instead of publishing without it.
+      NPM_CONFIG_PROVENANCE: "true"
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+      - name: Release hold
+        shell: bash
+        # While .github/release-hold exists nothing below runs: a published npm name and version are permanent, so the
+        # first publish is an operator decision. A pull request that deletes the file lifts it.
+        run: |
+          if [ -e .github/release-hold ]; then
+            echo "::error::the npm release is on hold: .github/release-hold exists"
+            cat .github/release-hold
+            exit 1
+          fi
+      - name: The commit passed the checks workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs" \
+            --jq '[.check_runs[] | select(.name == "checks") | .conclusion] | first // "none"')
+          echo "checks on $GITHUB_SHA: $conclusion"
+          test "$conclusion" = success
+      - uses: cachix/install-nix-action@3c6342b75005b9cc7c7d4069c3e9179247c89012 # v31
+      - uses: cachix/cachix-action@97e5ff84d02b3b4f9936339f767e17f03c9252ed # v16
+        with:
+          name: devenv
+      - name: Install pinned devenv CLI
+        shell: bash
+        run: nix profile add github:cachix/devenv/b904dcb51fe48c30db250038241507f60752f222
+      - name: Install workspace dependencies
+        shell: bash
+        run: devenv shell -- bun install --frozen-lockfile
+      - name: npm supports trusted publishing
+        shell: bash
+        # Trusted publishing needs npm 11.5.1 or later and Node 22.14 or later (docs.npmjs.com/trusted-publishers).
+        run: |
+          devenv shell -- bash -c '
+            version=$(npm --version)
+            printf "%s\n" "11.5.1" "$version" | sort -V -C || { echo "npm $version is older than 11.5.1"; exit 1; }
+            echo "npm $version"
+          '
+      - name: Build what is published
+        shell: bash
+        # Writes packages/*/dist: bundled ESM, declarations, a generated package.json, LICENSE, NOTICE. Fails when a
+        # package would ship a file that is not built output.
+        run: devenv shell -- bun run release:stage
+      - name: npm credentials file (the token itself is never written)
+        shell: bash
+        # npm expands ${NODE_AUTH_TOKEN} when it reads this file; the single quotes keep the shell from doing it.
+        run: |
+          printf '%s\n' '//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}' > "$RUNNER_TEMP/npmrc"
+      - name: Publish
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npmrc
+        # `changeset publish` runs `npm publish packages/<name>/dist --tag alpha --access public` for each version the
+        # registry lacks (the tag comes from .changeset/pre.json). npm refuses to run anywhere in a repository whose
+        # root package.json has `devEngines.packageManager` for another tool (EBADDEVENGINES, bun here), so the field
+        # is removed from this runner's checkout, which is discarded when the job ends.
+        run: |
+          jq 'del(.devEngines)' package.json > package.json.release
+          mv package.json.release package.json
+          devenv shell -- bunx changeset publish --no-git-tag

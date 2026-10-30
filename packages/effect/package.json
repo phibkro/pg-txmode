@@ -1,12 +1,18 @@
 {
   "name": "@pg-txmode/effect",
   "version": "0.0.0",
-  "private": true,
+  "description": "Effect adapter of pg-txmode: a SqlClient and a transaction door for Effect on @effect/sql-pg, configured from the connection mode.",
+  "license": "Apache-2.0",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
   "scripts": {
+    "prepublishOnly": "echo 'publish packages/effect/dist (bun run release:stage), not the source directory' && exit 1",
     "test": "bunx vp test",
     "build": "vp pack"
   },
