@@ -1,7 +1,8 @@
 {
   "name": "@pg-txmode/harness",
   "version": "0.0.0",
-  "private": true,
+  "description": "Test tool of pg-txmode: starts a throwaway PostgreSQL and a PgBouncer (transaction mode, Neon's settings) from PATH, runs the probe matrix against the catalogue, and records statements.",
+  "license": "Apache-2.0",
   "bin": {
     "pg-txmode-harness": "./src/cli.ts"
   },
@@ -9,18 +10,23 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
   "scripts": {
+    "prepublishOnly": "echo 'publish packages/harness/dist (bun run release:stage), not the source directory' && exit 1",
     "test": "bunx vp test",
     "build": "vp pack"
   },
   "dependencies": {
     "@pg-txmode/core": "workspace:*",
+    "@types/pg": "catalog:",
     "pg": "catalog:"
   },
   "devDependencies": {
     "@pg-txmode/lint": "workspace:*",
     "@types/node": "catalog:",
-    "@types/pg": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   }

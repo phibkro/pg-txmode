@@ -58,12 +58,12 @@
       },
       "dependencies": {
         "@pg-txmode/core": "workspace:*",
+        "@types/pg": "catalog:",
         "pg": "catalog:",
       },
       "devDependencies": {
         "@pg-txmode/lint": "workspace:*",
         "@types/node": "catalog:",
-        "@types/pg": "catalog:",
         "typescript": "catalog:",
         "vite-plus": "catalog:",
       },

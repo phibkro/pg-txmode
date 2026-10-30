@@ -53,7 +53,7 @@ Exit 1 when a finding is an error; `--strict` makes warnings fail too. A log com
 | `tools/quality/**` | the gate's negative control from `AGENTS.md` ("See it fail") for each gate that the diff touches |
 | `packages/core/src/catalogue*.ts` | section 3 (every probe against the changed row), `check:docs`; check that each new source URL resolves and says what the cell says |
 | `packages/core/src/**` (other) | `ready`; a negative control for the changed law (spec 0001 lists them) |
-| `packages/harness/**` | sections 2 and 3 |
+| `packages/harness/**` | sections 2 and 3; if `packages/harness/package.json` or its `README.md` changed, also `devenv shell -- bun run release:stage` and the dry-run publish of the release row (the harness is published, spec 0007) |
 | `packages/lint/**` | sections 2 and 4 on a file with a known violation (any M1 statement) |
 | `packages/pg/**` | section 2, then `cd packages/pg && devenv shell -- bunx vp test` (the adapter's tests against a throwaway PostgreSQL and PgBouncer; the abort and session tests take a few seconds) |
 | `packages/effect/**` | section 2, then `cd packages/effect && devenv shell -- bunx vp test` (the adapter's tests against a throwaway PostgreSQL and two PgBouncers; the two known-issue pins run a hung client in a process of its own and take about 20 s each), and `devenv shell -- bun run probes:effect` (the design probes: interruption of a running transaction through this package and through an Effect wrapper of the `pg` adapter, and the M2b workload through `PgClient` and through the layer; about 80 s). `devenv shell -- bun run check:effect` (the Effect-patched compiler, `effect-tsgo tsc`) prints the Effect language-service diagnostics that `bun run check` does not run|

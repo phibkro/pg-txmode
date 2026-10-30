@@ -87,10 +87,11 @@ const ChangesetConfig = z.object({
 const Pre = z.object({ mode: z.string(), tag: z.string() });
 
 describe("which packages are published", () => {
-  test("core, pg, effect and lint; the harness and the repository tooling stay private", () => {
+  test("core, pg, effect, lint and the harness; the repository tooling stays private", () => {
     expect(publishedNames).toStrictEqual([
       "@pg-txmode/core",
       "@pg-txmode/effect",
+      "@pg-txmode/harness",
       "@pg-txmode/lint",
       "@pg-txmode/pg",
     ]);
@@ -98,7 +99,7 @@ describe("which packages are published", () => {
       workspace.flatMap((entry) =>
         entry.manifest.private === true ? [entry.manifest.name] : []
       )
-    ).toContain("@pg-txmode/harness");
+    ).toStrictEqual([]);
   });
 
   test("Changesets versions exactly the published set, in lockstep, as public alpha prereleases", () => {
@@ -122,13 +123,16 @@ describe("which packages are published", () => {
       );
     }
 
+    // A workspace package that is private (none is, today): the fixture adds one to the workspace names.
     expect(
       unpublishedDependencies(
-        fixture({ dependencies: { "@pg-txmode/harness": "workspace:*" } }),
+        fixture({
+          dependencies: { "@pg-txmode/private-probe": "workspace:*" },
+        }),
         publishedSet,
-        names
+        new Set([...names, "@pg-txmode/private-probe"])
       )
-    ).toStrictEqual(["@pg-txmode/harness"]);
+    ).toStrictEqual(["@pg-txmode/private-probe"]);
   });
 });
 
@@ -212,7 +216,9 @@ describe("the manifest that ships", () => {
     expect(
       mentions("is workspace:* but is not a published package")(
         problems(
-          fixture({ dependencies: { "@pg-txmode/harness": "workspace:*" } })
+          fixture({
+            dependencies: { "@pg-txmode/private-probe": "workspace:*" },
+          })
         )
       )
     ).toBe(true);
@@ -367,26 +373,28 @@ describe("what a built file may import", () => {
     ]);
   });
 
-  test("fails declarations whose types come from a development dependency (control)", () => {
+  test("fails declarations whose types come from a development dependency, imported or augmented (control)", () => {
     const typed = fixture({
       dependencies: { pg: "8.0.0" },
       devDependencies: { "@types/pg": "8.0.0" },
     }).manifest;
 
-    expect(
-      importFindings(typed, built("index.d.mts", 'import { Pool } from "pg";'))
-    ).toStrictEqual([
-      "@probe/probe: index.d.mts imports pg, and its types @types/pg are a devDependency, which does not ship",
-    ]);
-    expect(
-      importFindings(typed, built("index.mjs", 'import { Pool } from "pg";'))
-    ).toStrictEqual([]);
-    expect(
-      importFindings(
-        manifest,
-        built("index.d.mts", 'import { Pool } from "pg";')
-      )
-    ).toStrictEqual([]);
+    const finding =
+      "@probe/probe: index.d.mts imports pg, and its types @types/pg are a devDependency, which does not ship";
+
+    // `declare module "pg"` is how the harness's declarations add `processID` and `secretKey` to node-postgres' Client.
+    for (const text of [
+      'import { Pool } from "pg";',
+      'declare module "pg" { interface Client {} }',
+    ]) {
+      expect(importFindings(typed, built("index.d.mts", text))).toStrictEqual([
+        finding,
+      ]);
+      expect(importFindings(typed, built("index.mjs", text))).toStrictEqual([]);
+      expect(
+        importFindings(manifest, built("index.d.mts", text))
+      ).toStrictEqual([]);
+    }
   });
 
   test("maps a scoped package to its types name", () => {

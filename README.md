@@ -20,7 +20,7 @@ Status: in development. Specs 0000 to 0005 are merged; spec 0006 (the npm releas
 | --- | --- | --- |
 | `@pg-txmode/core` | the catalogue, the connection mode and its capabilities, the SQL constructs, SQLSTATE classification, transaction opening and retry. Plain TypeScript with no Node API, written for Node, Bun and workerd (run on Node and Bun so far). The separate entry `@pg-txmode/core/cancel` (CancelRequest over Node's `net`) is Node only | nothing |
 | `@pg-txmode/lint` | the SQL lint on `libpg-query` (the PostgreSQL parser as WebAssembly, MIT); a CLI over `.sql` files, `sql` tagged templates and a recorded statement log. Node and CI | `core`, `libpg-query`, `oxc-parser` |
-| `@pg-txmode/harness` | starts a throwaway PostgreSQL 18 and PgBouncer (Neon's published settings); the probe suite and its matrix; a statement recorder | `core`, `pg` |
+| `@pg-txmode/harness` (spec 0007) | a published **test tool**: starts a throwaway PostgreSQL 18 and PgBouncer from `PATH` (Neon's published settings); the probe suite and its matrix; a statement recorder. See its [README](packages/harness/README.md) | `core`, `pg` |
 | `@pg-txmode/pg` (spec 0002) | the node-postgres adapter | `core`, `harness` (tests), `pg` |
 
 ## Where a pooled connection is not a direct one
@@ -93,7 +93,7 @@ devenv up                          # a PgBouncer and PostgreSQL on fixed ports f
 
 ## Release
 
-Not yet published; the first `mode=publish` run of the Release workflow (the operator's, with environment approval) publishes `0.1.0-alpha.0`. Once it has, the packages `@pg-txmode/core`, `@pg-txmode/pg`, `@pg-txmode/effect` and `@pg-txmode/lint` are versioned together (`0.1.0-alpha.N`, dist-tag `alpha`) and installed with `npm i @pg-txmode/core@alpha`: `@alpha` always installs the newest alpha. A plain `npm i @pg-txmode/core` (the `latest` tag) is not managed: the registry sets `latest` on a package's first publish and nothing here moves it, so it may install `0.1.0-alpha.0` and not the newest alpha. `npm view @pg-txmode/core dist-tags` shows both. `devenv shell -- bun run release:stage` builds `packages/<name>/dist`, the directory that is published ([spec 0006](docs/specs/0006-release.md)). The harness is not published.
+Published: `@pg-txmode/core`, `@pg-txmode/pg`, `@pg-txmode/effect` and `@pg-txmode/lint` are on npm at `0.1.0-alpha.0`, and `@pg-txmode/harness` (a test tool, [spec 0007](docs/specs/0007-harness-publish.md)) joins them at the next version. They are versioned together (`0.1.0-alpha.N`, dist-tag `alpha`) and installed with `npm i @pg-txmode/core@alpha`: `@alpha` always installs the newest alpha. A plain `npm i @pg-txmode/core` (the `latest` tag) is not managed: the registry sets `latest` on a package's first publish and nothing here moves it, so it may install `0.1.0-alpha.0` and not the newest alpha. `npm view @pg-txmode/core dist-tags` shows both. `devenv shell -- bun run release:stage` builds `packages/<name>/dist`, the directory that is published ([spec 0006](docs/specs/0006-release.md)).
 
 ## Roadmap
 

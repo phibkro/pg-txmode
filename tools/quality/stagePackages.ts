@@ -87,10 +87,16 @@ const stage = (entry: PackageEntry, manifest: ShippedManifest): void => {
   );
   copyFileSync(path.join(root, "LICENSE"), path.join(dist, "LICENSE"));
   copyFileSync(path.join(root, "NOTICE"), path.join(dist, "NOTICE"));
-  writeFileSync(
-    path.join(dist, "README.md"),
-    `# ${entry.manifest.name}\n\n${entry.manifest.description}\n\nDocumentation, the catalogue and the rules: ${homepage}\n`
-  );
+
+  // A package's own README ships when it has one; the others get a short generated one.
+  if (existsSync(path.join(dir, "README.md"))) {
+    copyFileSync(path.join(dir, "README.md"), path.join(dist, "README.md"));
+  } else {
+    writeFileSync(
+      path.join(dist, "README.md"),
+      `# ${entry.manifest.name}\n\n${entry.manifest.description}\n\nDocumentation, the catalogue and the rules: ${homepage}\n`
+    );
+  }
 
   if (existsSync(path.join(dir, "CHANGELOG.md"))) {
     copyFileSync(
