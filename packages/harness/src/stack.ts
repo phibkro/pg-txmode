@@ -80,12 +80,36 @@ interface Running {
   readonly stop: () => Promise<void>;
 }
 
-const run = (command: string, args: readonly string[]): Running => {
+/**
+ * Runs when the process that started a server has gone (any signal, `SIGKILL` included): kills the server if it is still
+ * alive and removes its directory. `$1` is the starting process, `$2` the server, `$3` the directory. It ends as soon as
+ * either process is gone, so a normal `stop()` leaves it for at most one second.
+ */
+const watchdog = `while kill -0 "$1" 2>/dev/null && kill -0 "$2" 2>/dev/null; do sleep 1; done
+if kill -0 "$2" 2>/dev/null; then kill -KILL "$2" 2>/dev/null; sleep 1; rm -rf "$3"; fi`;
+
+/**
+ * `dir`, when given, is the directory of a server: a watchdog (a detached `sh`) then cleans up after a parent that dies
+ * without calling `stop()`. Nothing in Node can catch `SIGKILL`, so the cleanup cannot live in this process.
+ */
+const run = (
+  command: string,
+  args: readonly string[],
+  dir?: string
+): Running => {
   const chunks: string[] = [];
 
   const child = spawn(command, [...args], {
     stdio: ["ignore", "pipe", "pipe"],
   });
+
+  if (dir !== undefined && child.pid !== undefined) {
+    spawn(
+      "sh",
+      ["-c", watchdog, "sh", String(process.pid), String(child.pid), dir],
+      { detached: true, stdio: "ignore" }
+    ).unref();
+  }
 
   const { promise: exited, resolve } = Promise.withResolvers<number | null>();
 
@@ -191,22 +215,26 @@ export const startPostgres = async (
     "--no-sync",
   ]);
 
-  const running = run("postgres", [
-    "-D",
-    `${dir}/data`,
-    "-p",
-    String(port),
-    "-k",
-    dir,
-    "-c",
-    `listen_addresses=${host}`,
-    "-c",
-    `max_connections=${maxConnections}`,
-    "-c",
-    "fsync=off",
-    "-c",
-    "synchronous_commit=off",
-  ]);
+  const running = run(
+    "postgres",
+    [
+      "-D",
+      `${dir}/data`,
+      "-p",
+      String(port),
+      "-k",
+      dir,
+      "-c",
+      `listen_addresses=${host}`,
+      "-c",
+      `max_connections=${maxConnections}`,
+      "-c",
+      "fsync=off",
+      "-c",
+      "synchronous_commit=off",
+    ],
+    dir
+  );
 
   const cleanUp = stopAndRemove(running, dir);
 
@@ -281,7 +309,7 @@ export const startPgBouncer = async (
     })
   );
 
-  const running = run("pgbouncer", [`${dir}/pgbouncer.ini`]);
+  const running = run("pgbouncer", [`${dir}/pgbouncer.ini`], dir);
 
   const cleanUp = stopAndRemove(running, dir);
 

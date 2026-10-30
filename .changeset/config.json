@@ -5,7 +5,13 @@
   "changelog": "@changesets/cli/changelog",
   "commit": false,
   "fixed": [
-    ["@pg-txmode/core", "@pg-txmode/effect", "@pg-txmode/lint", "@pg-txmode/pg"]
+    [
+      "@pg-txmode/core",
+      "@pg-txmode/effect",
+      "@pg-txmode/harness",
+      "@pg-txmode/lint",
+      "@pg-txmode/pg"
+    ]
   ],
   "ignore": [],
   "linked": [],
