@@ -23,7 +23,6 @@ jobs:
     # No step runs a publish command without --dry-run, and the publish job below does not run in this mode.
     if: inputs.mode == 'check' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: npm-release
     permissions:
       contents: read
     steps:

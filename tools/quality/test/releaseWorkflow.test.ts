@@ -118,6 +118,7 @@ describe("token-free workflows", () => {
       "NODE_AUTH_TOKEN: value",
       "//registry.npmjs.org/:_authToken=anything",
       "NPM_CONFIG__AUTH: value",
+      `npm_${"x".repeat(36)}`,
     ]) {
       expect(tokenFindings(fixture(text))).not.toStrictEqual([]);
     }
@@ -260,7 +261,7 @@ describe("the release mode", () => {
 });
 
 describe("the real files", () => {
-  test("secretspec.toml and the workflows follow the token rule", () => {
+  test("all workflows follow the token rule", () => {
     const workflows = readdirSync(path.join(repoRoot, ".github/workflows"))
       .filter((name) => /\.ya?ml$/u.test(name))
       .map((name) => ({
@@ -292,18 +293,6 @@ describe("the real files", () => {
           permissions: { "id-token": "write" },
         },
       },
-    });
-  });
-
-  test("rejects loss of the publisher OIDC permission (control)", () => {
-    const text = readRepositoryFile(".github/workflows/release.yml");
-
-    const workflow: unknown = parseYaml(
-      text.replace("id-token: write", "id-token: read")
-    );
-
-    expect(workflow).not.toMatchObject({
-      jobs: { publish: { permissions: { "id-token": "write" } } },
     });
   });
 

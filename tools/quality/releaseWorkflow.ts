@@ -16,7 +16,7 @@ export interface WorkflowFile {
 }
 
 /** Either a value or the sentence that says why there is none. */
-export type Outcome<T> =
+type Outcome<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly problem: string };
 
@@ -70,7 +70,7 @@ const parseWorkflow = (file: WorkflowFile): Outcome<Parsed> => {
   }
 };
 
-/** Reject long-lived npm authentication and stored secrets in workflows. */
+/** Text guard, including comments: catches common credential forms, not indirect secret flows or all npm auth methods. */
 export const tokenFindings = (
   workflows: readonly WorkflowFile[]
 ): readonly string[] =>

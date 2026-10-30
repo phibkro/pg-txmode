@@ -8,7 +8,7 @@ pg-txmode publishes five packages including the harness. Trusted publishing was 
 
 Next:
 
-- After merge, the operator removes the npm-release environment secret and revokes the obsolete npm token; watch the next real publish.
+- After merge, watch the first token-free publish. After it succeeds, the operator removes the npm-release secret, revokes the obsolete token, and disables token publishing for each package (spec 0010).
 - Continue the README roadmap (postgres.js, Drizzle integrations, and the deployed Hyperdrive probe Worker).
 
 Blocked:
