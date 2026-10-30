@@ -295,6 +295,22 @@ describe("the real files", () => {
     });
   });
 
+  test("rejects loss of the publisher OIDC permission (control)", () => {
+    const text = readRepositoryFile(".github/workflows/release.yml");
+
+    const workflow: unknown = parseYaml(
+      text.replace("id-token: write", "id-token: read")
+    );
+
+    expect(workflow).not.toMatchObject({
+      jobs: { publish: { permissions: { "id-token": "write" } } },
+    });
+  });
+
+  test("the secret declaration has no npm token", () => {
+    expect(readRepositoryFile("secretspec.toml")).not.toContain("NPM_TOKEN");
+  });
+
   test("the check job dry-runs each package and holds no publish", () => {
     const text = readRepositoryFile(".github/workflows/release.yml");
 
