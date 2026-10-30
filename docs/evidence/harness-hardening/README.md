@@ -58,22 +58,25 @@ The E404 branch (publish) is R1's first line and R3's. **Found:** the first atte
 
 ```text
 D1 `del(.devEngines)` renamed in release.yml      FAIL the devEngines removal > the real workflow removes devEngines before it publishes ...   (1 failed | 34 passed)
-D2 the E404 match put back to grep -q "404"        FAIL the publish step > a gateway error that mentions 404 is not an E404 (control)         (1 failed | 34 passed)
+D2 the exact previous line, grep -q "E404"          FAIL the publish step > an error whose body mentions E404 outside npm's code line is not an E404 (control)   (1 failed | 34 passed)
 restored                                           Tests  35 passed (35)
 ```
+
+Round 1 of PR #17 found that the first D2 (`grep -q "404"`) restored code that never existed: the old line was `grep -q "E404"`, which the first fixture (`E502 ... upstream said 404`) did not match. The fixture is now `npm error code E500 ... upstream said "E404 Not Found"` and D2 above is run on the exact previous line (sed on the real file, restored after).
 
 `cd packages/harness && bunx vp test run <file>`:
 
 ```text
 W1 the watchdog's guard line replaced by `true`    FAIL watchdog.test.ts > sh without sleep or rm: ... no spinning loop   (Test timed out in 20000ms: the server lives)   (1 failed | 2 passed)
 W2 the `error` listener renamed                    FAIL watchdog.test.ts > no sh: the server is killed and the output names sh   (Test timed out in 20000ms)   (1 failed | 2 passed)
+S1 `|| running.child.signalCode !== null` removed  FAIL watchdog.test.ts > is rejected at once ... (expected 'stub exited early' but got 'stub did not accept connections:'; 10 s instead of under 5)   (1 failed | 3 passed)
 O1 the watchdog spawn disabled (orphans.test.ts)   FAIL SIGKILL / SIGTERM / SIGINT leaves no server and no directory behind   (3 failed)
    afterwards: ps -eo pid,args | grep pg-txmode-orphans- | wc -l  ->  0
 ```
 
 Before the `finally` cleanup the same control left four processes (spec 0007 evidence). The two W controls left a stub Node process each, which is why `watchdog.test.ts` now ends every server it starts in `afterEach`; the one that remained from that run was ended by its pid.
 
-Baseline: `watchdog.test.ts` 3 passed (no `sh`; `sh` only; `sh`, `sleep` and `rm`), `orphans.test.ts` 3 passed.
+Baseline: `watchdog.test.ts` 4 passed (no `sh`; `sh` only; `sh`, `sleep` and `rm`), `orphans.test.ts` 3 passed. The devEngines gate, after round 1, also fails fixtures with the removal after the publish, as an `echo`, and under `if: false`.
 
 ## 3. The tarball of the harness, after the change
 

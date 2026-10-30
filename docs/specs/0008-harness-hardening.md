@@ -10,7 +10,7 @@ Reviews of PRs #13, #15 and #16 left lows that are open on issue #12 and that a 
 
 1. **The harness watchdog can fail silently or crash the host.** `run()` spawns `sh` for each server with no `error` listener: a missing `sh` is an unhandled `error` event that crashes the host process and orphans the server it was to guard. With `sh` present but `sleep` absent, the loop `sleep 1` fails at once and spins (about 45% of a core per server).
 2. **The orphan test can leave servers running when it fails** (its failing control did, four times).
-3. **The `Publish` step's `E404` match is a substring of the whole output**: a gateway error that mentions 404 (`E502 ... 404`) would be read as "not on the registry" and would publish.
+3. **The `Publish` step's `E404` match is a substring of the whole output** (`grep -q "E404"`): an error of another code whose body contains `E404` (for example `npm error code E500 ... upstream said "E404 Not Found"`) would be read as "not on the registry" and would publish. (This text first said `E502 ... 404`, which the old line did not match: see Revisions.)
 4. **The `devEngines` removal is ungated**: deleting it passes every test and fails only on the first release runner.
 5. **Evidence is stale or missing**: tarball figures of the harness evidence; the local-registry rehearsal of the E404 branch, of a refused name and of an unreachable registry; spec 0006 Revisions 12 says `pre.json` lists the consumed changeset (it does not).
 
@@ -49,8 +49,9 @@ Raw output and the controls: [`docs/evidence/harness-hardening/README.md`](../ev
 | F-8.2 | With `sh` but no `sleep` or `rm`, the server is killed at once and the output says so | `watchdog.test.ts` | the guard line replaced by `true`: the test times out |
 | F-8.3 | With `sh`, `sleep` and `rm` the server runs (no false refusal) | `watchdog.test.ts` | n/a |
 | F-8.4 | A failing orphan test leaves no process whose command line names its scratch directory | `orphans.test.ts` | the watchdog spawn disabled: all three tests fail and `ps` shows none left (0) |
-| F-8.5 | Only a line `npm error code E404` publishes; a gateway error that mentions 404 stops the step | `releaseWorkflow.test.ts` (real step, stubs) | the match put back to `"404"` on the real file: the control fails |
+| F-8.5 | Only a line `npm error code E404` publishes; an error whose body contains `E404` outside that line stops the step | `releaseWorkflow.test.ts` (real step, stubs) | the exact previous line `grep -q "E404"` on the real file: the control fails |
 | F-8.6 | A job that publishes has a `devEngines` removal before it | `releaseWorkflow.test.ts` (fixtures and the real file) | `del(.devEngines)` renamed on the real file: the test fails |
+| F-8.8 | A server killed by a signal fails the start at once (not after 200 attempts of 50 ms) | `watchdog.test.ts` (bound 5 s) | the `|| signalCode !== null` removed: the test fails |
 | F-8.7 | The real `Publish` step against a registry: publish on E404, skip on success, stop on E403, stop and print on a non-E404 error | evidence section 1 (local Verdaccio; not a gate) | refused name, unreachable registry |
 
 ## Constraints and values
@@ -64,3 +65,8 @@ No Effect; no secret; no publish by an agent; the harness API (`index.ts`) does 
   1. **`npm view` can answer from its cache when the registry is gone.** With the local registry stopped, the real `Publish` step said "is on the registry: skipped" for the versions that had been viewed before (npm served the cached packument), then hung on a version it had not. A runner starts with an empty cache, so the release is not affected; the rehearsal of the non-E404 branch therefore uses an empty cache and `NPM_CONFIG_FETCH_RETRIES=0` (evidence section 1, R5). Not changed.
   2. **The watchdog tests leave stub servers when they fail**, which is the defect they test for; `afterEach` now ends every stub it started.
 - **2026-10-30, corrections to earlier specs (issue #12).** Spec 0006 Revisions 12 said `.changeset/pre.json` lists the consumed changeset. It does not: `pre.json` holds only `{mode, tag}` (read on main after two version commits); the consumed file moves to `.changeset/pre/<name>.md`. Corrected by a dated line in spec 0006.
+- **2026-10-30, after review round 1 of PR #17 (recorded by `RevPgTx3` at `e6200b8`).**
+  3. **F-8.5 could not fail on the line it replaced (medium).** The old line was `grep -q "E404"`; the first fixture (`E502 ... upstream said 404`) contains no `E404`, so the old line passed it, and the control (`grep -q "404"`) restored code that never existed. Problem 3 described a hole that was not there. The real hole is a non-404 error whose body contains `E404`. The fixture is now `npm error code E500 ... upstream said "E404 Not Found"`; with the exact old line on the real file the control fails; Problem 3 and F-8.5 are corrected in place and say so.
+  4. **F-8.8 (new):** the `signalCode` check of `waitUntilAccepting` had no falsifier. `watchdog.test.ts` starts a stub that kills itself with SIGKILL and requires the wait to reject within 5 s ("exited early"); without the check it takes 10 s.
+  5. **The devEngines gate is stricter and its test builds its cases:** the step must run `jq ... del(.devEngines)` with no `if`; fixtures for the removal after the publish, as an `echo`, and under `if: false` fail. Limit stated: the gate reads the workflow text; it does not prove the step runs on the runner (a `run` that exits early, a different file).
+  6. **The orphan test ends its parent explicitly** in `finally` (its command line does not name the scratch directory).

@@ -81,12 +81,12 @@ const killParent = async (
 }> => {
   const scratch = await mkdtemp(path.join(tmpdir(), "pg-txmode-orphans-"));
 
-  try {
-    const parent = spawn(process.execPath, [childPath], {
-      env: { ...process.env, TMPDIR: scratch },
-      stdio: ["ignore", "pipe", "inherit"],
-    });
+  const parent = spawn(process.execPath, [childPath], {
+    env: { ...process.env, TMPDIR: scratch },
+    stdio: ["ignore", "pipe", "inherit"],
+  });
 
+  try {
     const { promise: line, resolve } = Promise.withResolvers<string>();
 
     parent.stdout.once("data", (chunk: Buffer) => {
@@ -124,6 +124,9 @@ const killParent = async (
   } finally {
     // A failing run (the watchdog broken) leaves servers whose command line names this scratch directory: end exactly
     // those, by pid, before the directory goes.
+    // The parent's command line does not name the directory, so it is ended itself (a run that threw before the kill).
+    parent.kill("SIGKILL");
+
     for (const pid of await pidsNaming(scratch)) {
       try {
         process.kill(pid, "SIGKILL");

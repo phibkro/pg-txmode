@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
-import { run } from "../src/stack.ts";
+import { run, waitUntilAccepting } from "../src/stack.ts";
 import type { Running } from "../src/stack.ts";
 
 /**
@@ -65,6 +65,25 @@ const start = async (): Promise<Running> => {
 
   return running;
 };
+
+describe("a start whose server is killed by a signal", () => {
+  test("is rejected at once, not after the 200 attempts (the signalCode check of waitUntilAccepting)", async () => {
+    const running = run(process.execPath, [
+      "-e",
+      "setTimeout(() => process.kill(process.pid, 'SIGKILL'), 200)",
+    ]);
+
+    started.push(running);
+
+    const begun = Date.now();
+
+    await expect(
+      waitUntilAccepting("postgres://app@127.0.0.1:1/app", running, "stub")
+    ).rejects.toThrow("stub exited early");
+    // 200 attempts of 50 ms would take 10 s or more.
+    expect(Date.now() - begun).toBeLessThan(5000);
+  }, 20_000);
+});
 
 describe("a watchdog that cannot run", () => {
   test("no sh: the server is killed and the output names sh", async () => {

@@ -51,6 +51,7 @@ interface Changes {
   readonly beforeHold?: string;
   readonly checkRun?: string;
   readonly checkSteps?: string;
+  readonly afterPublish?: string;
   readonly engines?: string;
   readonly environment?: string;
   readonly holdExtra?: string;
@@ -113,7 +114,7 @@ ${changes.beforeHold ?? ""}${holdBlock(changes)}${enginesBlock(changes)}      - 
 ${changes.publishExtra ?? ""}        env:
           NODE_AUTH_TOKEN: ${expression("NPM_TOKEN")}
         run: ${changes.publishRun ?? "bunx changeset publish"}
-`,
+${changes.afterPublish ?? ""}`,
 });
 
 /** A one-file workflow fixture. */
@@ -568,8 +569,40 @@ describe("the devEngines removal", () => {
     expect(engineFindings(release({}))).toStrictEqual([]);
   });
 
-  test("fails a publishing job without that step, or with it after the publish (controls)", () => {
+  test("fails a publishing job without that step, with it after the publish, as an echo, or under an if (controls)", () => {
     const missing = mentions("removes devEngines");
+
+    const removal =
+      "jq 'del(.devEngines)' package.json > p && mv p package.json";
+
+    expect(
+      missing(
+        engineFindings(
+          release({
+            afterPublish: `      - name: late\n        run: ${removal}\n`,
+            engines: "",
+          })
+        )
+      )
+    ).toBe(true);
+    expect(
+      missing(
+        engineFindings(
+          release({
+            engines: `      - name: talk\n        run: echo "del(.devEngines)"\n`,
+          })
+        )
+      )
+    ).toBe(true);
+    expect(
+      missing(
+        engineFindings(
+          release({
+            engines: `      - name: maybe\n        if: false\n        run: ${removal}\n`,
+          })
+        )
+      )
+    ).toBe(true);
 
     expect(missing(engineFindings(release({ engines: "" })))).toBe(true);
     expect(
@@ -757,12 +790,12 @@ describe("the publish step", () => {
     expect(published(log)).toStrictEqual([]);
   });
 
-  test("a gateway error that mentions 404 is not an E404 (control)", () => {
+  test("an error whose body mentions E404 outside npm's code line is not an E404 (control)", () => {
     const { exitCode, log, stdout } = runPublish({
       existing: [],
       pre: alpha,
       viewError:
-        "npm error code E502\nnpm error 502 Bad Gateway - GET https://registry.npmjs.org/@pg-txmode%2fcore - upstream said 404",
+        'npm error code E500\nnpm error 500 Internal Server Error - GET https://registry.npmjs.org/@pg-txmode%2fcore - upstream said "E404 Not Found"',
     });
 
     expect(exitCode).not.toBe(0);

@@ -671,7 +671,8 @@ export const holdFindings = (file: WorkflowFile): readonly string[] => {
 
 /** The step that makes npm usable in the checkout: `devEngines.packageManager` names Bun and npm refuses with EBADDEVENGINES. */
 const removesDevEngines = (step: Step): boolean =>
-  step.run?.includes("del(.devEngines)") === true;
+  step.if === undefined &&
+  /(?:^|\n)\s*jq\s[^\n]*del\(\.devEngines\)/u.test(step.run ?? "");
 
 /**
  * Sentences about the `devEngines` removal (spec 0008). Empty when every job that holds a publish command has a step

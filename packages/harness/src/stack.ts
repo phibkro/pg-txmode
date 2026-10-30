@@ -184,7 +184,7 @@ const stopAndRemove =
   };
 
 /** Polls until a client can connect to `url`; fails with the child's last output when it exits or never answers. */
-const waitUntilAccepting = async (
+export const waitUntilAccepting = async (
   url: string,
   running: Running,
   what: string,
