@@ -64,8 +64,8 @@ Source: [`tsukuri-labs/tsukuri`](https://github.com/tsukuri-labs/tsukuri) (the r
 | --- | --- | --- |
 | `.github/workflows/release.yml` | same path | package names and scope; the `check` job gains a checkout, the stage step, a `--dry-run` publish of each package (tsukuri's `check` needs none) and a `dist-tags` read; the `publish` job does **not** call `changeset publish` (it tags a second alpha `latest`; spec 0006, Revisions 5): its `Publish` step runs `npm publish ./<dist> --tag <pre-mode tag>` per package and skips what the registry has; the hold text and the pins are the same |
 | `.github/release-hold` | same path | the reason (the first publish is the operator's decision; tsukuri's was a name clearance) |
-| `secretspec.toml` | same path | project name and the description; `prompt = true` dropped (it needs SecretSpec 0.19 and is ignored before it, and nothing here uses it) |
-| `tools/quality/releaseWorkflow.ts`, `test/releaseWorkflow.test.ts` | `tools/quality/releaseWorkflow.ts`, `tools/quality/test/releaseWorkflow.test.ts` | **ported to plain TypeScript** (`zod`, `yaml`, `smol-toml`; Vitest): the same rules and controls; a publish command with `--dry-run` is not a publish, a script is split at `;`, `&&`, `\|\|` and `\|`, with controls for both |
+| `secretspec.toml` | same path | project name retained; the token declaration was removed in spec 0010 |
+| `tools/quality/releaseWorkflow.ts`, `test/releaseWorkflow.test.ts` | `tools/quality/releaseWorkflow.ts`, `tools/quality/test/releaseWorkflow.test.ts` | **ported to plain TypeScript** (`zod`, `yaml`; Vitest); spec 0010 replaces the token rule with a token-free guard; a publish command with `--dry-run` is not a publish, a script is split at `;`, `&&`, `\|\|` and `\|`, with controls for both |
 | `tools/quality/release.ts`, `stagePackages.ts` | none: **original**. The design (publishConfig `directory: dist`, a generated manifest, an `npm pack --dry-run --json` allowlist, `workspace:`/`catalog:` rewriting) follows the decisions of tsukuri's spec 0009, which was read; its stage script and `release.ts` were not | `exports` map to a flat `dist`; `bin` is built; one added rule (`importFindings`: a built file may import only what the manifest ships, and declarations need shipped types) found a real defect (spec 0006, Revisions 1) |
 | `tools/quality/test/release.test.ts` | `tools/quality/test/release.test.ts` (read; not copied) | rewritten in plain Vitest for this repository's rules; the same shape (a rule, a control, then the real manifests) |
 | `.changeset/config.json`, `README.md` | `changeset init` of `@changesets/cli` 3.0.3 | one `fixed` group of four packages; `commit: false`; `privatePackages`; `access: public` |
@@ -75,7 +75,7 @@ Source: [`tsukuri-labs/tsukuri`](https://github.com/tsukuri-labs/tsukuri) (the r
 | --- | --- | --- |
 | `@changesets/cli` 3.0.3 | MIT | versioning (`changeset version`; root, build time; the published packages do not depend on it) |
 | `yaml` 2.9.1 | ISC | parsing the workflow files in the release rules (`tools/quality`) |
-| `smol-toml` 1.9.1 | BSD-3-Clause | parsing `secretspec.toml` in the release rules (`tools/quality`; already in the lock through `knip`) |
+| `smol-toml` 1.9.1 | BSD-3-Clause | formerly used by the release rules; spec 0010 removed the direct dependency. It remains transitive through `knip` |
 
 Licences read from the registry on 2026-10-30 (`npm view yaml@2.9.1 license`: ISC; `@changesets/cli@3.0.3`: MIT; `smol-toml@1.9.1`: BSD-3-Clause).
 

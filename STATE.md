@@ -4,12 +4,12 @@ Lifecycle: build
 
 Now:
 
-pg-txmode is a library for safe PostgreSQL through transaction-pooling proxies (Hyperdrive first). Specs 0000 to 0006 are merged (lifecycle, core, `pg` adapter, Effect adapter, outbox lease, the `PersistedQueue` evidence, the npm release path). `@pg-txmode/{core,pg,effect,lint}@0.1.0-alpha.0` are published under `alpha`. Spec 0007 (the harness as a published, documented test tool) is in review.
+pg-txmode publishes five packages including the harness. Trusted publishing was observed in release run 41047699584; spec 0010 removes the fallback npm token.
 
 Next:
 
-- Spec 0007 (this PR) publishes the harness too; then the version PR (all five at `0.1.0-alpha.1`) and the operator's `mode=publish`; then read `npm view @pg-txmode/<name> dist-tags` for the five.
-- Later: trusted publishing and the removal checklist of spec 0006; the specs of the README roadmap (postgres.js; Drizzle `effect-postgres` and `SqlModel` on the Effect adapter; the deployed Hyperdrive probe Worker).
+- After merge, watch the first token-free publish. After it succeeds, the operator removes the npm-release secret, revokes the obsolete token, and disables token publishing for each package (spec 0010).
+- Continue the README roadmap (postgres.js, Drizzle integrations, and the deployed Hyperdrive probe Worker).
 
 Blocked:
 
