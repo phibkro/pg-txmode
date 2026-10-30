@@ -4,7 +4,7 @@
 
 ### Minor Changes
 
-- The harness is published: a test tool that starts a throwaway PostgreSQL and a PgBouncer from PATH, runs the probe matrix against the catalogue, and records statements. The other four packages are republished at the same version without changes (lockstep).
+- The harness is published: a test tool that starts a throwaway PostgreSQL and a PgBouncer from PATH, runs the probe matrix against the catalogue, and records statements. Servers it starts are killed and their directories removed if the starting process dies before stop().
 
 ### Patch Changes
 
