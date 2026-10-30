@@ -1,6 +1,6 @@
 {
   "name": "@pg-txmode/effect",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Effect adapter of pg-txmode: a SqlClient and a transaction door for Effect on @effect/sql-pg, configured from the connection mode.",
   "license": "Apache-2.0",
   "type": "module",

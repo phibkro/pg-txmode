@@ -1,6 +1,6 @@
 {
   "name": "@pg-txmode/lint",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "SQL lint for transaction-pooled connections, on the PostgreSQL parser's own AST: .sql files, sql tagged templates and a recorded statement log.",
   "license": "Apache-2.0",
   "bin": {
