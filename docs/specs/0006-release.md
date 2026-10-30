@@ -16,7 +16,7 @@ A maintainer runs one workflow on `main`, after a version commit, and four packa
 bun run release:stage            builds packages/<name>/dist for the four published packages and refuses anything that should not ship
 bun run release:version          changeset version: 0.1.0-alpha.N in lockstep, a CHANGELOG.md per package   (the next PR)
 Actions > Release > Run workflow  mode=check    dry-run publish of each package, the token's identity and reach; publishes nothing
-                                  mode=publish  npm publish of each dist, --tag alpha  (held while .github/release-hold exists)
+                                  mode=publish  npm publish of each dist, --tag alpha  (held while .github/release-hold exists; not held since Revisions 13)
 npm i @pg-txmode/core@alpha @pg-txmode/pg@alpha @pg-txmode/lint@alpha @pg-txmode/effect@alpha
 ```
 
@@ -82,7 +82,7 @@ OIDC stays the target: npm tries trusted publishing first and uses the token onl
 
 ### The release hold
 
-`.github/release-hold` holds the release while it exists. The `Release hold` step of `publish` follows the checkout (the only step allowed before it), fails with the file's text, and every later step is skipped. `check` is not held. **Lifting** is one pull request that deletes the file and adds a dated entry here. Merging this PR and the version PR publish nothing either way: only a `workflow_dispatch` run in `publish` mode does.
+`.github/release-hold` holds the release while it exists (**it does not exist since Revisions 13**; the mechanism stays). The `Release hold` step of `publish` follows the checkout (the only step allowed before it), fails with the file's text, and every later step is skipped. `check` is not held. **Lifting** was one pull request that deleted the file and added a dated entry here. Merging a PR publishes nothing: only a `workflow_dispatch` run in `publish` mode does.
 
 ### Gates (rules in code, with a control each)
 
@@ -114,7 +114,7 @@ The rules sit in `tools/quality/release.ts` and `releaseWorkflow.ts`, plain Type
 1. Merge this PR. Nothing is published.
 2. A separate PR adds one changeset and runs `bun run release:version`: `0.1.0-alpha.0`, CHANGELOGs, `.changeset/pre/`.
 3. The operator dispatches **Release, `mode=check`** (Actions > Release > Run workflow). Read the result: the dry-run tarball listing of four packages, the token's user, and whether `npm access list packages @pg-txmode` and `npm org ls pg-txmode` can read.
-4. A PR deletes `.github/release-hold` (a dated entry here).
+4. ~~A PR deletes `.github/release-hold`~~ Done by the PR of Revisions 13.
 5. The operator dispatches `mode=publish`: the first publish of each name creates it. If it fails with E403 or E404 the token lacks permission to create packages in the scope; that was not checked (the docs read name scopes and packages; no run). **Afterwards**: read `npm view @pg-txmode/<name> dist-tags` for each package (the `check` mode prints it too) and decide whether `latest` should stay on `0.1.0-alpha.0`.
 6. Later: configure trusted publishers, then the removal checklist below.
 
@@ -155,3 +155,5 @@ Order matters: npm's rule is that a new trusted-publisher configuration must com
   10. **No claim about `latest` that was not observed.** Revisions 5 said the intended state is no `latest` until a stable release. On Verdaccio, removing `latest` re-created it on the newest alpha; npm's behaviour is not observed (`npm view @pg-txmode/core` is E404 today: nothing exists to observe). Read: after the first publish the operator runs `npm view @pg-txmode/<name> dist-tags` (the `check` mode prints the same) and decides; until then an untagged install, `npm i @pg-txmode/core`, may get `0.1.0-alpha.0` (not the newest alpha), and `@alpha` always gets the newest. The README says so.
   11. **The `Publish` step prints what `npm view` says and publishes only on E404.** It used to treat every `npm view` failure as "not on the registry". Now: success = skipped; output with `E404` = publish; anything else (network, registry error, 5xx) prints the output and stops with nothing published for that package. Real npm answers E404 for a missing package and for a missing version of an existing one (`npm view zod@9.9.9 version` and `npm view @pg-txmode/nonexistent-xyz@1.0.0 version`, both exit 1, evidence section 7). Tests (stubs): a non-E404 error stops and prints it; a refused name (E403 on `effect` after `core`) stops the set, and a re-run skips `core` and publishes `effect`, `lint`, `pg`.
   12. **The version commit** (`changeset version`): `0.1.0-alpha.0` for the four packages, a `CHANGELOG.md` each, `.changeset/pre.json` lists the consumed changeset. No publish; the hold stays.
+- **2026-10-30, the release hold is lifted (operator decision, relayed by the lead).**
+  13. **`.github/release-hold` is deleted** by this PR (spec 0006 "Lifting"; Revisions 12 left it in force). Nothing else changes: the `Release hold` step stays in `publish` as a mechanism (the hold gate and its controls are unchanged; the test does not require the file to exist, so a hold can be put back by adding the file). After the merge a dispatch of `mode=publish` on `main` can publish; it still waits for the environment `npm-release` approval of its reviewer (`phibkro`), and the `checks` check-run of the commit must be `success`. The first publish creates the four names `@pg-txmode/{core,pg,effect,lint}` at `0.1.0-alpha.0` under `alpha` and is permanent. **Afterwards** the operator reads `npm view @pg-txmode/<name> dist-tags` for each package (Revisions 10). The token path is unchanged.
