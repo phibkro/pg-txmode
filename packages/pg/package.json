@@ -1,6 +1,6 @@
 {
   "name": "@pg-txmode/pg",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "node-postgres adapter of pg-txmode: a database for a declared connection mode that refuses what the pooler cannot honour, with whole-transaction retry and abort.",
   "license": "Apache-2.0",
   "type": "module",
